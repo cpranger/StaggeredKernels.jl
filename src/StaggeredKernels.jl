@@ -11,7 +11,6 @@ export   assign!, reduce, collect_stags, stag_subset, dot
 # internals
 include("./include/scalar.jl")
 include("./include/tensor.jl")
-include("./include/visu.jl")
 include("./include/eigenmodes.jl")
 
 @generated function assign_at!(lhs::L, rhs::R, inds, bounds) where {L <: NamedTuple, R <: NamedTuple}
