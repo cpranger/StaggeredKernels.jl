@@ -1,0 +1,4 @@
+name = "StaggeredKernels"
+uuid = "7e04f4fc-500f-4e38-a45f-c4e2172a0bce"
+authors = ["Casper Pranger <casper.pranger@gmail.com>"]
+version = "0.1.0"
