@@ -13,7 +13,7 @@ struct Field{Indx, BCs <: Tuple, T <: AbstractArray} <: AbstractField
 end
 
 (Field(dims::NTuple{N,I}, stags::NTuple{M, NTuple{N,I}}, bcs::Tuple = ()) where {M, N, I  <: Int}) =
-    Field{stags}(@zeros(M, dims...), bcs)
+    Field{stags}(zeros(M, dims...), bcs)
 	
 (Field{SS}(data::T, bcs::BCs = ()) where {SS, BCs, T <: AbstractArray}) =
     Field{SS, BCs, T}(data, bcs)

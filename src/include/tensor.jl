@@ -85,7 +85,7 @@ end
 	Tensor(dims, S, stags.cpnts, bcs)
 
 function Tensor(dims::NTuple, ::Type{S}, stags::NamedTuple, bcs = NamedTuple()) where {S<:TensorSymmetry}
-	data  = @zeros(+(map(length, stags)...), dims...)
+	data  = zeros(+(map(length, stags)...), dims...)
 	gen   = (i, c, s) -> scalar_tensor_component(S, data, bcs, i, c, s)
 	cmps  = keys(stags)
 	inds  = accumulate(+, (1, map(length, values(stags))[1:end-1]...))

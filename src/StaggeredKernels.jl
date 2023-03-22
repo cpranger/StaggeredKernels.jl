@@ -33,7 +33,7 @@ end
 end
 
 function reduce(op, field, bounds; init = 0.)
-	result   = @zeros(); result[] = init
+	result   = zeros(); result[] = init
 	for i in CartesianIndices <| map((:), bounds...)
 		reduce_at!(result, op, field, Tuple(i), bounds)
 	end
@@ -41,7 +41,7 @@ function reduce(op, field, bounds; init = 0.)
 end
 
 function reduce(op, field1, field2, bounds; init = 0.)
-	result   = @zeros(); result[] = init
+	result   = zeros(); result[] = init
 	for i in CartesianIndices <| map((:), bounds...)
 		reduce_at!(result, op, field1, field2, Tuple(i), bounds)
 	end
