@@ -23,7 +23,7 @@ struct FieldExpr{T <: Tuple} <: AbstractField
 	contents::T
 end
 
-(FieldExpr(args::T) where T <: Tuple) = FieldExpr{T}(args)
+# (FieldExpr(args::T) where T <: Tuple) = FieldExpr{T}(args)
 (FieldExpr(args...)) = FieldExpr(tuple(args...))
 
 FieldOp(op::Symbol, args...) = FieldExpr(Val(:call), Val(op), args...)
@@ -201,8 +201,10 @@ end
 
 (getindex(x::FieldGen, s::Val{S}, inds...) where S) = x.func((inds .+ S./2 .- 1)...)
 
+# (stencil(::Type{FieldIntp{A}},      to) where  {A         }) = combinations(map((f, t) -> mod(f,2) == mod(t,2) ? [t] : [t-1,t+1], stags(A)[1], to)...)
+
 @generated function getindex(x::FieldIntp{A}, s::Val{S}, inds...) where {A, S}
-	sten = stencil(FieldIntp{A}, S)
+	sten = combinations(map((f, t) -> mod(f,2) == mod(t,2) ? [t] : [t-1,t+1], stags(A)[1], S)...)
 	size = length(sten)
 	args = [:(getindex(x.interpolant, $(Val(s)), inds...)) for s in sten]
 	return Expr(:call, :/, Expr(:call, :+, args...), size)

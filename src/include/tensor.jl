@@ -105,12 +105,18 @@ end
 	cc = Val(decode_component(S, C))
 	return :(symmetry_expr(S, obj, $cc))
 end
+
+function has_component(::Type{Tensor{S, T}}, c::Val{C}) where {S, C, T}
+	return symmetry_expr(S, 1, Val(decode_component(S, C))) != :(0)
+end
 	
 # tensor indexing without symmetry checking.
 @generated function get_component_by_index(obj::Tensor{S, NamedTuple{N, T}}, ::Val{I}) where {S, N, T, I}
 	(c = encode_component(S, I)) in N || return 0
 	return :(getfield(obj.cpnts, $(Meta.quot(c))))
 end
+
+get_component_by_index(obj, ::Val) = obj
 	
 @generated function get_component(obj::NamedTuple{N,T}, c::Val{C}) where {N, T, C}
 	C in N || error(
@@ -118,6 +124,28 @@ end
 		"Tensors offer more flexibility."
 	)
 	return :(getfield(obj, C))
+end
+
+function has_component(::Type{NamedTuple{N,T}}, c::Val{C}) where {N, T, C}
+	return C in N
+end
+
+(get_component(p::TensorScale{T, S}, c::Val{C}) where {T, S, C}) = p.s * get_component(p.t, c)
+
+(has_component(::Type{TensorScale{T, S}}, c::Val) where {T, S}) = has_component(T, c)
+
+(get_component(p::TensorSum{T1, T2}, c::Val{C}) where {T1, T2, C}) = get_component(p.t1, c) + get_component(p.t2, c)
+
+(has_component(::Type{TensorSum{T1, T2}}, c::Val) where {T1, T2}) = has_component(T1, c) && has_component(T2, c)
+
+@generated function get_component(p::TensorAdjoint{T}, c::Val{C}) where {T, C}
+	cc = Val <| encode_component <| reverse <| decode_component(C)
+	return :(adjoint <| get_component(p.t, $cc))
+end
+
+function has_component(::Type{TensorAdjoint{T}}, c::Val{C}) where {T, C}
+	cc = Val <| encode_component <| reverse <| decode_component(C)
+	return has_component(T, cc)
 end
 
 @generated function get_component(p::TensorProd{T1,T2}, c::Val{C}) where {T1, T2, C}
@@ -140,22 +168,16 @@ end
 		ca = Val <| encode_component <| (ia..., ic...)
 		cb = Val <| encode_component <| (ic..., ib...)
 		
-		aa = :(interpolate <| get_component(p.t1, $ca))
-		bb = :(interpolate <| get_component(p.t2, $cb))
-		result = Expr(:call, :+, result, Expr(:call, :*, aa, bb))
+		if has_component(T1, ca) && has_component(T2, cb)
+			aa = :(#=interpolate <| =#get_component(p.t1, $ca))
+			bb = :(#=interpolate <| =#get_component(p.t2, $cb))
+			result = Expr(:call, :+, result, Expr(:call, :*, aa, bb))
+		end
 	end
 	
 	return result
 end
 
-(get_component(p::TensorScale{T, S}, c::Val{C}) where {T, S, C}) = p.s * get_component(p.t, c)
-
-(get_component(p::TensorSum{T1, T2}, c::Val{C}) where {T1, T2, C}) = get_component(p.t1, c) + get_component(p.t2, c)
-
-@generated function get_component(p::TensorAdjoint{T}, c::Val{C}) where {T, C}
-	cc = Val <| encode_component <| reverse <| decode_component(C)
-	return :(adjoint <| get_component(p.t, $cc))
-end
 
 
 @generated function reduce_at!(result::AbstractArray{T,0}, op, field::Tensor{S, NamedTuple{N,Tt}}, inds, bounds) where {T, S, N, Tt}
@@ -183,16 +205,16 @@ end
 	###########################
 
 L2(arg) = sqrt(
-	interpolate(arg.x)^2 +
-	interpolate(arg.y)^2 +
-	interpolate(arg.z)^2
+	#=interpolate(=#arg.x#=)=#^2 +
+	#=interpolate(=#arg.y#=)=#^2 +
+	#=interpolate(=#arg.z#=)=#^2
 )
 
 function dot(arg1::AbstractTensor, arg2::AbstractTensor)
 	keys  = intersect(tensor_components(arg1), tensor_components(arg2))
 	gen  = k -> dot(
-		interpolate <| get_component(arg1, k),
-		interpolate <| get_component(arg2, k)
+		#=interpolate <| =#get_component(arg1, k),
+		#=interpolate <| =#get_component(arg2, k)
 	)
 	return +([gen for k in keys]...)
 end
@@ -202,7 +224,7 @@ I1(arg) = (1/1) * (J1(arg)^1)
 I2(arg) = (1/2) * (J1(arg)^2 - 1*J2(arg))
 I3(arg) = (1/6) * (J1(arg)^3 - 3*J2(arg)*J1(arg) + 2*J3(arg))
 
-J1(arg) = interpolate(tr(arg))
+J1(arg) = #=interpolate(=#tr(arg)#=)=#
 J2(arg) = tr(arg^2)
 J3(arg) = tr(arg^3)
 
