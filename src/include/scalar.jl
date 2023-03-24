@@ -1,6 +1,6 @@
 # module StaggeredKernels
 
-export If, A, D, interpolate, fieldgen, Field, Essential, Natural, Neumann, Dirichlet, FieldRed#, assign_at, reduce_at
+export If, A, D, BD, FD, interpolate, fieldgen, Field, Essential, Natural, Neumann, Dirichlet, FieldRed, zero_bc#, assign_at, reduce_at
 
 abstract type AbstractField end
 abstract type AbstractBC{D} end
@@ -39,20 +39,28 @@ kronecker(i, j) = Int(i == j)
 kronecker(i) = n -> Tuple([kronecker(i, j) for j in 1:n])
 # stagdir(stag, dir, rad) = Tuple([stag[k] + rad*kronecker(k,dir) for k in 1:length(stag)])
 
-D(x::Number, ::Symbol) = 0
-A(x::Number, ::Symbol) = x
+ D(x::Number, ::Symbol) = 0
+BD(x::Number, ::Symbol) = 0
+FD(x::Number, ::Symbol) = 0
+ A(x::Number, ::Symbol) = x
 
-D(x, d::Symbol) = D(x, decode_component(d)[1])
-A(x, d::Symbol) = A(x, decode_component(d)[1])
+ D(x, d::Symbol) =  D(x, decode_component(d)[1])
+BD(x, d::Symbol) = BD(x, decode_component(d)[1])
+FD(x, d::Symbol) = FD(x, decode_component(d)[1])
+ A(x, d::Symbol) =  A(x, decode_component(d)[1])
 
-D(x, d::Int   ) = d <= my_ndims(x) ? D(x, kronecker(d)(my_ndims(x))) : 0
-A(x, d::Int   ) = d <= my_ndims(x) ? A(x, kronecker(d)(my_ndims(x))) : 0
+ D(x, d::Int   ) = d <= my_ndims(x) ?  D(x, kronecker(d)(my_ndims(x))) : 0
+BD(x, d::Int   ) = d <= my_ndims(x) ? BD(x, kronecker(d)(my_ndims(x))) : 0
+FD(x, d::Int   ) = d <= my_ndims(x) ? FD(x, kronecker(d)(my_ndims(x))) : 0
+ A(x, d::Int   ) = d <= my_ndims(x) ?  A(x, kronecker(d)(my_ndims(x))) : 0
 
-D(x::AbstractField, d::NTuple) = (S(x, .+d) - S(x, .-d))
-A(x::AbstractField, d::NTuple) = (S(x, .+d) + S(x, .-d))/2
+ D(x::AbstractField, d::NTuple) = (S(x, .+d) - S(x, .-d))
+BD(x::AbstractField, d::NTuple) =  S(D(x, d), .-d)
+FD(x::AbstractField, d::NTuple) =  S(D(x, d), .+d)
+ A(x::AbstractField, d::NTuple) = (S(x,    .+d) + S(x,    .-d))/2
 
-(D(x::NTuple{M,NTuple{N,I}}, d::NTuple) where {N, M, I <: Int}) = Tuple <| unique <| map(s -> mod.(s .+ d, 2), x)
-(A(x::NTuple{M,NTuple{N,I}}, d::NTuple) where {N, M, I <: Int}) = Tuple <| unique <| map(s -> mod.(s .+ d, 2), x)
+( D(x::NTuple{M,NTuple{N,I}}, d::NTuple) where {N, M, I <: Int}) = Tuple <| unique <| map(s -> mod.(s .+ d, 2), x)
+( A(x::NTuple{M,NTuple{N,I}}, d::NTuple) where {N, M, I <: Int}) = Tuple <| unique <| map(s -> mod.(s .+ d, 2), x)
 
 
 struct FieldIntp{T} <: AbstractField
@@ -100,6 +108,12 @@ end
 
 (Essential(sign::Symbol, axis::Symbol, val::T) where T <: Scalar) = 
 	Essential{decode_bc_dir(sign, axis), T}(val)
+
+(  Natural{D}(val::T) where {D, T <: Scalar}) =   Natural{D,T}(val)
+(Essential{D}(val::T) where {D, T <: Scalar}) = Essential{D,T}(val)
+
+(zero_bc(  bc::Natural{D}) where D) =   Natural{D}(0)
+(zero_bc(bc::Essential{D}) where D) = Essential{D}(0)
 
 (lmargin(::Type{BC} where BC <: AbstractBC{D}) where D) = D < 0 ? .-kronecker(abs(D))(3) : (0, 0, 0,)
 (umargin(::Type{BC} where BC <: AbstractBC{D}) where D) = D > 0 ? .+kronecker(abs(D))(3) : (0, 0, 0,)
