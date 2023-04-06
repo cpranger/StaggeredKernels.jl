@@ -52,17 +52,19 @@ function parse_bc(bc::AbstractBC{D}) where D
 	return (d, f, v)
 end
 
-function parse_bcs(f::Field)
-	result = map(_ -> fill(-1, 2), 1:my_ndims(f))
-	for bc in f.bcs
+function parse_bcs(bcs::Tuple)
+	result = map(_ -> fill(-1, 2), 1:3)
+	for bc in bcs
 		(d, f, v) = parse_bc(bc)
 		result[d][f] = v
 	end
-	any(r -> (-1 in r), result) || return result
+	any(r -> (-1 in r), result[1:3]) || return result[1:3]
+	any(r -> (-1 in r), result[1:2]) || return result[1:2]
+	any(r -> (-1 in r), result[1:1]) || return result[1:1]
 	error("boundary conditions incompletely specified")
 end
 
-parse_bcs(t::Tensor{Unsymmetric{1}}) = [parse_bcs(f) for f in t.cpnts]
+parse_bcs(t::NamedTuple) = [parse_bcs(f) for f in t]
 
 function parse_gridsize(f::Field{SS}) where SS
 	length(SS) == 1 ||
@@ -90,10 +92,10 @@ struct pMode <: AbstractMode
 	b
 end
 
-Mode(f::Field) = Mode(parse_gridsize(f), parse_bcs(f))
+Mode(f::Field, bcs) = Mode(parse_gridsize(f), parse_bcs(bcs))
 
-sMode(v::Tensor{Unsymmetric{1}}) = sMode(parse_gridsize(v), parse_bcs(v))
-pMode(v::Tensor{Unsymmetric{1}}) = pMode(parse_gridsize(v), parse_bcs(v))
+sMode(v::Tensor{Unsymmetric{1}}, bcs) = sMode(parse_gridsize(v), parse_bcs(bcs))
+pMode(v::Tensor{Unsymmetric{1}}, bcs) = pMode(parse_gridsize(v), parse_bcs(bcs))
 
 common_n(n) = map(min, n...)
 
