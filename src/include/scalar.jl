@@ -7,16 +7,15 @@ abstract type AbstractBC{D} end
 
 const Scalar = Union{Number,AbstractField}
 
-struct Field{Indx, BCs <: Tuple, T <: AbstractArray} <: AbstractField
+struct Field{Indx, T <: AbstractArray} <: AbstractField
 	data::T
-	bcs::BCs
 end
 
-(Field(dims::NTuple{N,I}, stags::NTuple{M, NTuple{N,I}}, bcs::Tuple = ()) where {M, N, I  <: Int}) =
-    Field{stags}(zeros(M, dims...), bcs)
+(Field(dims::NTuple{N,I}, stags::NTuple{M, NTuple{N,I}}) where {M, N, I  <: Int}) =
+    Field{stags}(zeros(M, dims...))
 	
-(Field{SS}(data::T, bcs::BCs = ()) where {SS, BCs, T <: AbstractArray}) =
-    Field{SS, BCs, T}(data, bcs)
+(Field{SS}(data::T) where {SS, T <: AbstractArray}) =
+    Field{SS, T}(data)
 
 # TODO: TEST DEEP VS SHALLOW COPY WHEN CONSTRUCTING
 struct FieldExpr{T <: Tuple} <: AbstractField
@@ -146,10 +145,10 @@ my_ndims(f::FieldGen)   = first(methods(f.func)).nargs
 (my_ndims(f::NTuple{M,NTuple{N}}) where {M, N}) = N
 my_ndims(f::Any)        = 0
 
-(stags(::Type{Field{St, BCs, T}}) where {St, BCs, T}) = St
-(stags(::Type{FieldExpr{Tt}})     where {Tt        }) = intersect([stags(t) for t in fieldtypes(Tt)]...)
-(stags(::Type{FieldShft{S,T}})    where {S,  T     }) = [mod.(s .+ S, 2) for s in stags(T)]
-(stags(::Type{FieldIntp{A}})      where {A         }) = combinations([0, 1], length(stags(A)[1]))
+(stags(::Type{Field{St, T}})   where {St, T}) = St
+(stags(::Type{FieldExpr{Tt}})  where {Tt        }) = intersect([stags(t) for t in fieldtypes(Tt)]...)
+(stags(::Type{FieldShft{S,T}}) where {S,  T     }) = [mod.(s .+ S, 2) for s in stags(T)]
+(stags(::Type{FieldIntp{A}})   where {A         }) = combinations([0, 1], length(stags(A)[1]))
 (stags(::Type)) = union(map(n -> combinations([0, 1], n), 1:3)...)
 
 stencil_offset(s::(NTuple{N,Int} where N)) = div.(s, 2, RoundUp)
@@ -233,7 +232,6 @@ end
 	)
 end
 
-
 @generated function assign_at!(lhs::Field{S}, rhs, inds, bounds) where S
 	return Expr(
 		:block,
@@ -247,6 +245,20 @@ end
 	)
 end
 
+@generated function assign_at!(lhs::Tuple{Field{S}, BC}, rhs, inds, bounds) where {S, BC <: Tuple}
+	return Expr(
+		:block,
+		[:(assign_at!(
+			lhs[1],
+			rhs,
+			$(Val(.-s)),
+			inds,
+			(bounds[1], bounds[2] .+ $(s .- 1)),
+			lhs[2]
+		)) for s in S]...
+	)
+end
+
 #    x   |   x       x       x       x       x       x       x   |   x    
 #        1       2       3       4       5       6       7       8       9
 #        x       x       x       x       x       x       x       x       -
@@ -256,7 +268,7 @@ end
 #        x       x       x       x       x       x       x       x       -
 #        |                                                       |         
 
-@generated function assign_at!(lhs::Field{Stags, BCs}, rhs, s::Val{Stag}, inds, bounds) where {Stags, BCs, Stag}
+@generated function assign_at!(lhs::Field{Stags}, rhs, s::Val{Stag}, inds, bounds, bcs::BCs = ()) where {Stags, Stag, BCs <: Tuple}
 	n = length(Stag)
 	i = stagindex(Stags, mod.(Stag, 2))
 	
@@ -268,7 +280,7 @@ end
 	# rotate indices counter-clockwise so that boundary conditions are computed last :-D
 	test_expr =  :(all(bounds[1] .<= inds .<= bounds[2] .- $margin))
 	then_expr =  :(lhs.data[$i, (inds .- $lm)...] = getindex(rhs, s, (inds .- $lm)...))
-	bc_exprs  = [:(assign_bc_at!(lhs, lhs.bcs[$j], s, $(Val(i)), mod.(inds .- $lm .- 1, bounds[2]) .+ 1, bounds)) for j in 1:fieldcount(BCs)]
+	bc_exprs  = [:(assign_bc_at!(lhs, bcs[$j], s, $(Val(i)), mod.(inds .- $lm .- 1, bounds[2]) .+ 1, bounds)) for j in 1:fieldcount(BCs)]
 	else_expr =  Expr(:block, bc_exprs...)
 	
 	return Expr(:if, test_expr, then_expr, else_expr)

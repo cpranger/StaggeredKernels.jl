@@ -68,12 +68,11 @@ function decode_component(::Type{S}, s::Symbol) where S <: TensorSymmetry
 	return inds
 end
 
-function scalar_tensor_component(::Type{S}, data, bcs::Union{NamedTuple,Tuple}, f, c, stags) where S <: TensorSymmetry
+function scalar_tensor_component(::Type{S}, data, f, c, stags) where S <: TensorSymmetry
 	inds = decode_component(S, c)
 	!symmetry_permutes(S, inds) ||
 		error("Component ($c) does not map to itself under the symmetry $S.")
-	bc = hasproperty(bcs, c) ? getproperty(bcs, c) : ()
-	return Field{stags}(view(data, f:(f-1+length(stags)), fill(:,ndims(data)-1)...), bc)
+	return Field{stags}(view(data, f:(f-1+length(stags)), fill(:,ndims(data)-1)...))
 end
 
 # returns tensor order and empty string if named tuple could be parsed as tensor,

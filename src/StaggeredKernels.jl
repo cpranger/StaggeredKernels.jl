@@ -19,6 +19,12 @@ include("./include/eigenmodes.jl")
 	return Expr(:block, exprs...)
 end
 
+@generated function assign_at!(lhs::Tuple{L, BC}, rhs::R, inds, bounds) where {L <: NamedTuple, BC <: NamedTuple, R <: NamedTuple}
+	keys = intersect(L.parameters[1], R.parameters[1])
+	exprs = [:(assign_at!((lhs[1].$k, lhs[2].$k), rhs.$k, inds, bounds)) for k in keys]
+	return Expr(:block, exprs...)
+end
+
 function assign!(lhs, rhs, bounds)
 	for i in CartesianIndices <| map((:), bounds...)
 		assign_at!(lhs, rhs, Tuple(i), bounds)
@@ -30,6 +36,12 @@ end
 	exprs = [:(reduce_at!(result, op, field.$k, inds, bounds)) for k in keys]
 	return Expr(:block, exprs...)
 end
+
+# @generated function reduce_at!(result::AbstractArray{T,0}, op, field::Tuple{F,BC}, inds, bounds) where {T, F <: NamedTuple, BC <: NamedTuple}
+# 	keys  = F.parameters[1]
+# 	exprs = [:(reduce_at!(result, op, (field[1].$k, field[2].$k), inds, bounds)) for k in keys]
+# 	return Expr(:block, exprs...)
+# end
 
 function reduce(op, field, bounds; init = 0.)
 	result   = zeros(); result[] = init

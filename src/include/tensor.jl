@@ -81,19 +81,19 @@ end
 
 (Tensor(::Type{S}) where S <: TensorSymmetry) = Tensor(NamedTuple(), S)
 
-(Tensor(dims, ::Type{S}, stags::Tensor, bcs = NamedTuple()) where {S<:TensorSymmetry}) = 
-	Tensor(dims, S, stags.cpnts, bcs)
+(Tensor(dims, ::Type{S}, stags::Tensor) where {S<:TensorSymmetry}) = 
+	Tensor(dims, S, stags.cpnts)
 
-function Tensor(dims::NTuple, ::Type{S}, stags::NamedTuple, bcs = NamedTuple()) where {S<:TensorSymmetry}
+function Tensor(dims::NTuple, ::Type{S}, stags::NamedTuple) where {S<:TensorSymmetry}
 	data  = zeros(+(map(length, stags)...), dims...)
-	gen   = (i, c, s) -> scalar_tensor_component(S, data, bcs, i, c, s)
+	gen   = (i, c, s) -> scalar_tensor_component(S, data, i, c, s)
 	cmps  = keys(stags)
 	inds  = accumulate(+, (1, map(length, values(stags))[1:end-1]...))
 	vals  = map(gen, inds, cmps, values(stags))
 	return Tensor(NamedTuple{cmps}(vals), S)
 end
 
-Vector(dims, stags, bcs = NamedTuple()) = Tensor(dims, Unsymmetric{1}, stags, bcs)
+Vector(dims, stags) = Tensor(dims, Unsymmetric{1}, stags)
 
 # explicitly user-facing tensor indexing
 function Base.getproperty(obj::T, c::Symbol) where T <: AbstractTensor
@@ -181,19 +181,22 @@ end
 
 
 @generated function reduce_at!(result::AbstractArray{T,0}, op, field::Tensor{S, NamedTuple{N,Tt}}, inds, bounds) where {T, S, N, Tt}
-	keys  = field.parameters[1]
 	expr_rules = K -> :(reduce_at!(result, op, getfield(field.cpnts, $K), inds, bounds))
 	return Expr(:block, map(expr_rules, Meta.quot.(N))...)
 end
 
 @generated function reduce_at!(result::AbstractArray{T,0}, op, f1::Tensor{S, NamedTuple{N,Tt1}}, f2::Tensor{S, NamedTuple{N,Tt2}}, inds, bounds) where {T, S, N, Tt1, Tt2}
-	keys  = f1.parameters[1]
 	expr_rules = K -> :(reduce_at!(result, op, getfield(f1.cpnts, $K), getfield(f2.cpnts, $K), inds, bounds))
 	return Expr(:block, map(expr_rules, Meta.quot.(N))...)
 end
 
 @generated function assign_at!(lhs::Tensor{S, NamedTuple{N, T}}, rhs, inds, bounds) where {S, N, T}
 	expr_rules = (k, K) -> :(assign_at!(getfield(lhs.cpnts, $K), get_component(rhs, $(Val(k))), inds, bounds))
+	return Expr(:block, map(expr_rules, N, Meta.quot.(N))...)
+end
+
+@generated function assign_at!(lhs::Tuple{Tensor{S, NamedTuple{N, T}}, BC}, rhs, inds, bounds) where {S, N, T, BC <: Union{Tensor{S}, NamedTuple}}
+	expr_rules = (k, K) -> :(assign_at!((getfield(lhs[1].cpnts, $K), get_component(lhs[2], $(Val(k)))), get_component(rhs, $(Val(k))), inds, bounds))
 	return Expr(:block, map(expr_rules, N, Meta.quot.(N))...)
 end
 
