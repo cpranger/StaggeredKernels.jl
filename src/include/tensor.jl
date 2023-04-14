@@ -15,18 +15,16 @@ struct TensorProd{T1 <: AbstractTensor, T2 <: AbstractTensor} <: AbstractTensor
 	t2::T2
 end
 
-struct TensorScale{T <: AbstractTensor, S <: Scalar} <: AbstractTensor
-	t::T
-	s::S
-end
-
 include("./tensor_symmetry.jl")
 
 Base.:*(a::AbstractTensor, b::AbstractTensor) =  TensorProd(a,   b)
-Base.:*(a::AbstractTensor, b::Scalar        ) = TensorScale(a,   b)
-Base.:*(a::Scalar        , b::AbstractTensor) = TensorScale(b,   a)
-Base.:/(a::AbstractTensor, b::Scalar        ) = TensorScale(a, 1/b)
-Base.:-(a::AbstractTensor)                    = TensorScale(a,  -1)
+Base.:*(a::AbstractTensor, b::Scalar        ) =  TensorOp(:*, a, b)
+Base.:*(a::Scalar        , b::AbstractTensor) =  TensorOp(:*, a, b)
+Base.:/(a::AbstractTensor, b::Scalar        ) =  TensorOp(:/, a, b)
+Base.:/(a::Scalar        , b::AbstractTensor) =  TensorOp(:/, a, b)
+Base.:+(a::AbstractTensor, b::AbstractTensor) =  TensorOp(:+, a, b)
+Base.:-(a::AbstractTensor, b::AbstractTensor) =  TensorOp(:-, a, b)
+Base.:-(a::AbstractTensor)                    =  TensorOp(:-, a)
 
 (nt_prod(a::Scalar, b::NamedTuple{N}) where {N}) = NamedTuple{N}(map(v -> a * v, values(b)))
 (nt_prod(a::NamedTuple{N}, b::Scalar) where {N}) = NamedTuple{N}(map(v -> b * v, values(a)))
@@ -41,19 +39,6 @@ Base.:/(a::AbstractTensor, b::Tensor{Unsymmetric{1}}) = Vector((x = a.x/b.x, y =
 (tensor_pow(arg::AbstractTensor, ::Val{P}) where P) = arg * tensor_pow(arg, Val(P-1))
 
 Base.:^(arg::AbstractTensor, pow::Int) = pow > 0 ? tensor_pow(arg, Val(pow)) : error("pow <= 0.")
-
-
-struct TensorSum{T1 <: AbstractTensor, T2 <: AbstractTensor} <: AbstractTensor
-	t1::T1
-	t2::T2
-end
-
-Base.:+(a::AbstractTensor, b::AbstractTensor) = TensorSum(a, b)
-Base.:-(a::AbstractTensor, b::AbstractTensor) = a + (-b)
-
-# struct TensorNeg{T <: AbstractTensor} <: AbstractTensor
-# 	t::T
-# end
 
 
 struct TensorAdjoint{T <: AbstractTensor} <: AbstractTensor
@@ -130,13 +115,33 @@ function has_component(::Type{NamedTuple{N,T}}, c::Val{C}) where {N, T, C}
 	return C in N
 end
 
-(get_component(p::TensorScale{T, S}, c::Val{C}) where {T, S, C}) = p.s * get_component(p.t, c)
+(get_component(p::T,      c::Val) where {T <: Scalar}) = p
+(has_component(::Type{T}, c::Val) where {T <: Scalar}) = true
 
-(has_component(::Type{TensorScale{T, S}}, c::Val) where {T, S}) = has_component(T, c)
+struct TensorExpr{T <: Tuple} <: AbstractTensor
+	contents::T
+end
 
-(get_component(p::TensorSum{T1, T2}, c::Val{C}) where {T1, T2, C}) = get_component(p.t1, c) + get_component(p.t2, c)
+(TensorExpr(args...)) = TensorExpr(tuple(args...))
+TensorOp(op::Symbol, args...) = TensorExpr(Val(:call), Val(op), args...)
 
-(has_component(::Type{TensorSum{T1, T2}}, c::Val) where {T1, T2}) = has_component(T1, c) && has_component(T2, c)
+@generated function get_component(p::TensorExpr{T}, c::Val{C}) where {T <: Tuple, C}
+	heads = expr_heads(fieldtypes(T)...)
+	first = length(heads)+1
+	last  = length(fieldtypes(T))
+	args  = [:(get_component(p.contents[$i], c)) for i in first:last]
+	return Expr(heads..., args...)
+end
+
+function has_component(::Type{TensorExpr{T}}, c::Val) where {T}
+	heads = expr_heads(fieldtypes(T)...)
+	first = length(heads)+1
+	last  = length(fieldtypes(T))
+	return all([has_component(p.contents[i], c) for i in first:last])
+end
+
+Base.imag(a::AbstractTensor) = TensorOp(:imag, a)
+Base.real(a::AbstractTensor) = TensorOp(:real, a)
 
 @generated function get_component(p::TensorAdjoint{T}, c::Val{C}) where {T, C}
 	cc = Val <| encode_component <| reverse <| decode_component(C)

@@ -18,15 +18,18 @@ function tensor_order(::Type{TensorProd{T1, T2}}) where {T1, T2}
 	return oa + ob - 2*cc
 end
 
-(tensor_order(::Type{TensorScale{T, S}}) where {T, S}) = tensor_order(T)
+(tensor_order(::Type{TensorAdjoint{T}}) where T) = tensor_order(T)
 
-function tensor_order(::Type{TensorSum{T1, T2}}) where {T1, T2}
-	o =  tensor_order(T1)
-	o == tensor_order(T2) || error("trying to add two tensors of unequal ranks.")
-	return o
+function tensor_order(::Type{TensorExpr{T}}) where {T}
+	heads  = expr_heads(fieldtypes(T)...)
+	first  = length(heads)+1
+	last   = length(fieldtypes(T))
+	orders = sort <| [tensor_order(fieldtypes(T)[i]) for i in first:last]
+	all(o -> o == orders[end] || o == 0, orders) || error("trying to operate on tensors of unequal ranks.")
+	return orders[end]
 end
 
-(tensor_order(::Type{TensorAdjoint{T}}) where T) = tensor_order(T)
+(tensor_order(::Type{S}) where {S <: Scalar}) = 0
 
 
 (symmetry_order(::TensorSymmetry{O}) where O) = O

@@ -321,6 +321,7 @@ Base.sqrt(a::AbstractField) = FieldOp(:sqrt, a)
 Base.imag(a::AbstractField) = FieldOp(:imag, a)
 Base.real(a::AbstractField) = FieldOp(:real, a)
 
+Base.abs(a::AbstractField) = FieldOp(:abs, a)
 Base.exp(a::AbstractField) = FieldOp(:exp, a)
 Base.sin(a::AbstractField) = FieldOp(:sin, a)
 Base.cos(a::AbstractField) = FieldOp(:cos, a)
