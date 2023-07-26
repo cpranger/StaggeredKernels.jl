@@ -15,6 +15,14 @@ struct TensorProd{T1 <: AbstractTensor, T2 <: AbstractTensor} <: AbstractTensor
 	t2::T2
 end
 
+struct TensorExpr{T <: Tuple} <: AbstractTensor
+	contents::T
+end
+
+(TensorExpr(args...)) = TensorExpr(tuple(args...))
+TensorOp(op::Symbol, args...) = TensorExpr(Val(:call), Val(op), args...)
+
+
 include("./tensor_symmetry.jl")
 
 Base.:*(a::AbstractTensor, b::AbstractTensor) =  TensorProd(a,   b)
@@ -118,13 +126,6 @@ end
 (get_component(p::T,      c::Val) where {T <: Scalar}) = p
 (has_component(::Type{T}, c::Val) where {T <: Scalar}) = true
 
-struct TensorExpr{T <: Tuple} <: AbstractTensor
-	contents::T
-end
-
-(TensorExpr(args...)) = TensorExpr(tuple(args...))
-TensorOp(op::Symbol, args...) = TensorExpr(Val(:call), Val(op), args...)
-
 @generated function get_component(p::TensorExpr{T}, c::Val{C}) where {T <: Tuple, C}
 	heads = expr_heads(fieldtypes(T)...)
 	first = length(heads)+1
@@ -200,8 +201,8 @@ end
 	return Expr(:block, map(expr_rules, N, Meta.quot.(N))...)
 end
 
-@generated function assign_at!(lhs::Tuple{Tensor{S, NamedTuple{N, T}}, BC}, rhs, inds, bounds) where {S, N, T, BC <: Union{Tensor{S}, NamedTuple}}
-	expr_rules = (k, K) -> :(assign_at!((getfield(lhs[1].cpnts, $K), get_component(lhs[2], $(Val(k)))), get_component(rhs, $(Val(k))), inds, bounds))
+@generated function assign_at!(lhs::Tensor{S, NamedTuple{N, T}}, rhs::Tuple{R, BC}, inds, bounds) where {S, N, T, R, BC <: Union{Tensor{S}, NamedTuple}}
+	expr_rules = (k, K) -> :(assign_at!(getfield(lhs.cpnts, $K), (get_component(rhs[1], $(Val(k))), get_component(rhs[2], $(Val(k)))), inds, bounds))
 	return Expr(:block, map(expr_rules, N, Meta.quot.(N))...)
 end
 

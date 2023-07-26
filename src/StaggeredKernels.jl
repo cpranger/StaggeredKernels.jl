@@ -12,6 +12,7 @@ export   assign!, reduce, collect_stags, stag_subset, dot
 include("./include/scalar.jl")
 include("./include/tensor.jl")
 include("./include/eigenmodes.jl")
+include("./include/linearization.jl")
 
 @generated function assign_at!(lhs::L, rhs::R, inds, bounds) where {L <: NamedTuple, R <: NamedTuple}
 	keys = intersect(lhs.parameters[1], rhs.parameters[1])
@@ -19,9 +20,9 @@ include("./include/eigenmodes.jl")
 	return Expr(:block, exprs...)
 end
 
-@generated function assign_at!(lhs::Tuple{L, BC}, rhs::R, inds, bounds) where {L <: NamedTuple, BC <: NamedTuple, R <: NamedTuple}
+@generated function assign_at!(lhs::L, rhs::Tuple{R, BC}, inds, bounds) where {L <: NamedTuple, R <: NamedTuple, BC <: NamedTuple}
 	keys = intersect(L.parameters[1], R.parameters[1])
-	exprs = [:(assign_at!((lhs[1].$k, lhs[2].$k), rhs.$k, inds, bounds)) for k in keys]
+	exprs = [:(assign_at!(lhs.$k, (rhs[1].$k, rhs[2].$k), inds, bounds)) for k in keys]
 	return Expr(:block, exprs...)
 end
 
@@ -34,6 +35,11 @@ end
 @generated function reduce_at!(result::AbstractArray{T,0}, op, field::F, inds, bounds) where {T, F <: NamedTuple}
 	keys  = field.parameters[1]
 	exprs = [:(reduce_at!(result, op, field.$k, inds, bounds)) for k in keys]
+	return Expr(:block, exprs...)
+end
+
+@generated function reduce_at!(result::AbstractArray{T,0}, op, f1::NamedTuple{N}, f2::NamedTuple{N}, inds, bounds) where {T, N}
+	exprs = [:(reduce_at!(result, op, f1.$k, f2.$k, inds, bounds)) for k in N]
 	return Expr(:block, exprs...)
 end
 

@@ -1,6 +1,6 @@
 # module StaggeredKernels
 
-export If, A, D, BD, FD, interpolate, fieldgen, Field, Essential, Natural, Neumann, Dirichlet, FieldRed, zero_bc#, assign_at, reduce_at
+export If, A, D, BD, FD, interpolate, fieldgen, AbstractField, Field, Essential, Natural, Neumann, AbstractBC, Dirichlet, FieldRed, zero_bc#, assign_at, reduce_at
 
 abstract type AbstractField end
 abstract type AbstractBC{D} end
@@ -102,6 +102,12 @@ function decode_bc_dir(sign::Symbol, axis::Symbol)
 	return sign_dict[sign] * axis_dict[axis]
 end
 
+  Natural(sign::Symbol, axis::Symbol) = 
+	  Natural{decode_bc_dir(sign, axis)}(0)
+
+Essential(sign::Symbol, axis::Symbol) = 
+	Essential{decode_bc_dir(sign, axis)}(0)
+
 (  Natural(sign::Symbol, axis::Symbol, val::T) where T <: Scalar) = 
 	  Natural{decode_bc_dir(sign, axis), T}(val)
 
@@ -111,8 +117,11 @@ end
 (  Natural{D}(val::T) where {D, T <: Scalar}) =   Natural{D,T}(val)
 (Essential{D}(val::T) where {D, T <: Scalar}) = Essential{D,T}(val)
 
-(zero_bc(  bc::Natural{D}) where D) =   Natural{D}(0)
-(zero_bc(bc::Essential{D}) where D) = Essential{D}(0)
+(  Natural{D}() where {D}) =   Natural{D}(0)
+(Essential{D}() where {D}) = Essential{D}(0)
+
+# (zero_bc(  bc::Natural{D}) where D) =   Natural{D}(0)
+# (zero_bc(bc::Essential{D}) where D) = Essential{D}(0)
 
 (lmargin(::Type{BC} where BC <: AbstractBC{D}) where D) = D < 0 ? .-kronecker(abs(D))(3) : (0, 0, 0,)
 (umargin(::Type{BC} where BC <: AbstractBC{D}) where D) = D > 0 ? .+kronecker(abs(D))(3) : (0, 0, 0,)
@@ -245,16 +254,16 @@ end
 	)
 end
 
-@generated function assign_at!(lhs::Tuple{Field{S}, BC}, rhs, inds, bounds) where {S, BC <: Tuple}
+@generated function assign_at!(lhs::Field{S}, rhs::Tuple{R, BCs}, inds, bounds) where {S, R, BCs <: Tuple}
 	return Expr(
 		:block,
 		[:(assign_at!(
-			lhs[1],
-			rhs,
+			lhs,
+			rhs[1],
 			$(Val(.-s)),
 			inds,
 			(bounds[1], bounds[2] .+ $(s .- 1)),
-			lhs[2]
+			rhs[2]
 		)) for s in S]...
 	)
 end
@@ -290,6 +299,8 @@ end
 	d = abs(D)
 	x = sign(D)
 	f = mod(-x, 3) # (-1, +1) -> (1, 2)
+	# n = length(S)
+	# o = -x .* kronecker(d)(n)
 	return quote
 		# println("-> $inds | $(bounds[2])")
 		if inds[$d] == bounds[$f][$d]
@@ -366,6 +377,6 @@ Base.:(==)(a::AbstractField, b::AbstractField) = FieldOp(:(==), a, b)
 Base.:(==)(a::Scalar, b::AbstractField) = FieldOp(:(==), a, b)
 Base.:(==)(a::AbstractField, b::Scalar) = FieldOp(:(==), a, b)
 
-dot(a::AbstractField, b::AbstractField) = interpolate(a) * interpolate(b)
+# dot(a::AbstractField, b::AbstractField) = interpolate(a) * interpolate(b)
 
 # module StaggeredKernels
