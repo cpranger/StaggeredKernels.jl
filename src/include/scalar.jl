@@ -178,7 +178,7 @@ end
 getindex(x::Number, ::Val, inds...) = x
 
 function checkbounds(x::Field{SS}, f, inds...) where SS
-	Base.checkbounds(Bool, x.data, f, (inds .+ 1 .- SS[f])...) || error("Out of bounds at index $inds")
+	Base.checkbounds(Bool, x.data, f, (inds .+ 1 .- SS[f])...) || error("Out of bounds at index $inds") # TODO: likely only properly checks one of two bounds
 	return true
 end
 
@@ -190,7 +190,10 @@ end
 @generated function getindex(x::Field{SS}, ::Val{S}, inds...) where {SS, S}
 	f = stagindex(SS, mod.(S, 2))
 	offset = stencil_offset(S)
-	return :(x[$f, (inds .+ $offset)...])
+
+	# 1 .<= inds .<= size(x.data)[2:end] .+ $(SS[$f] .- 1)
+
+	return :(x[$f, min.(max.(1, inds .+ $offset), size(x.data)[2:end] .+ $(SS[f] .- 1))...]) # This trick imposes automatic Neumann conditions whenever needed.
 end
 
 (expr_heads(args...)) = []

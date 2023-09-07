@@ -25,6 +25,9 @@ TensorOp(op::Symbol, args...) = TensorExpr(Val(:call), Val(op), args...)
 
 include("./tensor_symmetry.jl")
 
+Base.imag(a::AbstractTensor) = TensorOp(:imag, a)
+Base.real(a::AbstractTensor) = TensorOp(:real, a)
+
 Base.:*(a::AbstractTensor, b::AbstractTensor) =  TensorProd(a,   b)
 Base.:*(a::AbstractTensor, b::Scalar        ) =  TensorOp(:*, a, b)
 Base.:*(a::Scalar        , b::AbstractTensor) =  TensorOp(:*, a, b)
@@ -140,9 +143,6 @@ function has_component(::Type{TensorExpr{T}}, c::Val) where {T}
 	last  = length(fieldtypes(T))
 	return all([has_component(p.contents[i], c) for i in first:last])
 end
-
-Base.imag(a::AbstractTensor) = TensorOp(:imag, a)
-Base.real(a::AbstractTensor) = TensorOp(:real, a)
 
 @generated function get_component(p::TensorAdjoint{T}, c::Val{C}) where {T, C}
 	cc = Val <| encode_component <| reverse <| decode_component(C)
