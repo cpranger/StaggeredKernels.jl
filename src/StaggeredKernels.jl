@@ -26,7 +26,23 @@ end
 	return Expr(:block, exprs...)
 end
 
-function assign!(lhs, rhs, bounds)
+gridsize(f)              = missing
+gridsize(f::Field)       = size(f.data)[2:end]
+gridsize(f::Tensor)      = gridsize(f.cpnts)
+gridsize(f::NamedTuple)  = gridsize(values(f))
+
+function gridsize(f::Tuple)
+	nn = skipmissing(gridsize.(f))
+	length(collect(nn)) >= 1 || error("No gridded data structures found.")
+	all(n -> n == nn[1], nn) || error("Data defined on unequal grids.")
+	return nn[1]
+end
+
+
+function assign!(lhs, rhs)
+	n = gridsize(lhs)
+	o = n .- n .+ 1
+	bounds   = (o, n)
 	for i in CartesianIndices <| map((:), bounds...)
 		assign_at!(lhs, rhs, Tuple(i), bounds)
 	end
@@ -49,7 +65,10 @@ end
 # 	return Expr(:block, exprs...)
 # end
 
-function reduce(op, field, bounds; init = 0.)
+function reduce(op, field; init = 0.)
+	n = gridsize(field)
+	o = n .- n .+ 1
+	bounds   = (o, n)
 	result   = zeros(); result[] = init
 	for i in CartesianIndices <| map((:), bounds...)
 		reduce_at!(result, op, field, Tuple(i), bounds)
@@ -57,7 +76,10 @@ function reduce(op, field, bounds; init = 0.)
 	return result[]
 end
 
-function reduce(op, field1, field2, bounds; init = 0.)
+function reduce(op, field1, field2; init = 0.)
+	n = gridsize((field1, field2))
+	o = n .- n .+ 1
+	bounds   = (o, n)
 	result   = zeros(); result[] = init
 	for i in CartesianIndices <| map((:), bounds...)
 		reduce_at!(result, op, field1, field2, Tuple(i), bounds)
@@ -65,7 +87,7 @@ function reduce(op, field1, field2, bounds; init = 0.)
 	return result[]
 end
 
-dot(f1, f2, bounds) = reduce((r, a, b) -> r + a*b, f1, f2, bounds)
+dot(f1, f2) = reduce((r, a, b) -> r + a*b, f1, f2)
 
 
 collect_stags(stags::NamedTuple) = Tuple <| union(values(stags)...)

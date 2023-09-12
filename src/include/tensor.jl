@@ -219,14 +219,14 @@ L2(arg) = sqrt(
 	#=interpolate(=#arg.z#=)=#^2
 )
 
-function dot(arg1::AbstractTensor, arg2::AbstractTensor)
-	keys  = intersect(tensor_components(arg1), tensor_components(arg2))
-	gen  = k -> dot(
-		#=interpolate <| =#get_component(arg1, k),
-		#=interpolate <| =#get_component(arg2, k)
-	)
-	return +([gen for k in keys]...)
-end
+# function dot(arg1::AbstractTensor, arg2::AbstractTensor)
+# 	keys  = intersect(tensor_components(arg1), tensor_components(arg2))
+# 	gen  = k -> dot(
+# 		#=interpolate <| =#get_component(arg1, k),
+# 		#=interpolate <| =#get_component(arg2, k)
+# 	)
+# 	return +([gen for k in keys]...)
+# end
 
 # The following are found by the Cayley-Hamilton Theorem:
 I1(arg) = (1/1) * (J1(arg)^1)
