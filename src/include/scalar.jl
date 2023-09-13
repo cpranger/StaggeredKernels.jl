@@ -1,9 +1,8 @@
 # module StaggeredKernels
 
-export If, A, D, BD, FD, interpolate, fieldgen, AbstractField, Field, Essential, Natural, Neumann, AbstractBC, Dirichlet, FieldRed, zero_bc#, assign_at, reduce_at
+export If, A, D, BD, FD, interpolate, fieldgen, AbstractField, Field, BC, FieldRed, zero_bc#, assign_at, reduce_at
 
 abstract type AbstractField end
-abstract type AbstractBC{D} end
 
 const Scalar = Union{Number,AbstractField}
 
@@ -81,50 +80,31 @@ end
 fieldgen(f::Function) = FieldGen(f)
 
 
-struct Natural{D, T <: Scalar} <: AbstractBC{D}
+struct BC{D, T <: Scalar}
 	expr::T
 end
 
-struct Essential{D, T <: Scalar} <: AbstractBC{D}
-	expr::T
-end
-
-const Neumann = Natural
-const Dirichlet = Essential
-
-function decode_bc_dir(sign::Symbol, axis::Symbol)
-	sign_dict = Dict([:- => -1, :+ => +1])
-	axis_dict = Dict([:x =>  1, :y =>  2, :z =>  3])
+function parse_bc_dir(signaxis::String)
+	sign, axis = split(signaxis, "")
 	
-	sign in keys(sign_dict) || error("first  argument should be in $(keys(sign_dict)).")
-	axis in keys(axis_dict) || error("second argument should be in $(keys(axis_dict)).")
+	sign_dict  = Dict(["-" => -1, "+" => +1])
+	axis_dict  = Dict(["x" =>  1, "y" =>  2, "z" =>  3])
+	
+	sign in keys(sign_dict) || error( "first character should be in $(keys(sign_dict)).")
+	axis in keys(axis_dict) || error("second character should be in $(keys(axis_dict)).")
 	
 	return sign_dict[sign] * axis_dict[axis]
 end
 
-  Natural(sign::Symbol, axis::Symbol) = 
-	  Natural{decode_bc_dir(sign, axis)}(0)
+(BC{D}(val::T) where {D, T <: Scalar}) = BC{D,T}(val)
+(BC(d::String, val::T) where T <: Scalar) = BC{parse_bc_dir(d), T}(val)
 
-Essential(sign::Symbol, axis::Symbol) = 
-	Essential{decode_bc_dir(sign, axis)}(0)
+parse_bcs(arg::Pair)        = BC(arg[1], arg[2])
+parse_bcs(args::Tuple)      = map(parse_bcs, args)
+parse_bcs(args::NamedTuple) = (; zip(keys(args), map(v -> parse_bcs(v), values(args)))...)
 
-(  Natural(sign::Symbol, axis::Symbol, val::T) where T <: Scalar) = 
-	  Natural{decode_bc_dir(sign, axis), T}(val)
-
-(Essential(sign::Symbol, axis::Symbol, val::T) where T <: Scalar) = 
-	Essential{decode_bc_dir(sign, axis), T}(val)
-
-(  Natural{D}(val::T) where {D, T <: Scalar}) =   Natural{D,T}(val)
-(Essential{D}(val::T) where {D, T <: Scalar}) = Essential{D,T}(val)
-
-(  Natural{D}() where {D}) =   Natural{D}(0)
-(Essential{D}() where {D}) = Essential{D}(0)
-
-# (zero_bc(  bc::Natural{D}) where D) =   Natural{D}(0)
-# (zero_bc(bc::Essential{D}) where D) = Essential{D}(0)
-
-(lmargin(::Type{BC} where BC <: AbstractBC{D}) where D) = D < 0 ? .-kronecker(abs(D))(3) : (0, 0, 0,)
-(umargin(::Type{BC} where BC <: AbstractBC{D}) where D) = D > 0 ? .+kronecker(abs(D))(3) : (0, 0, 0,)
+(lmargin(::Type{BC{D,T}}) where {D,T}) = D < 0 ? .-kronecker(abs(D))(3) : (0, 0, 0,)
+(umargin(::Type{BC{D,T}}) where {D,T}) = D > 0 ? .+kronecker(abs(D))(3) : (0, 0, 0,)
 
 lmargin() = (0, 0, 0,)
 umargin() = (0, 0, 0,)
@@ -298,7 +278,7 @@ end
 	return Expr(:if, test_expr, then_expr, else_expr)
 end
 
-@generated function assign_bc_at!(lhs::Field, bc::Essential{D}, s::Val{S}, i::Val{I}, inds, bounds) where {D, I, S}
+@generated function assign_bc_at!(lhs::Field, bc::BC{D}, s::Val{S}, i::Val{I}, inds, bounds) where {D, I, S}
 	d = abs(D)
 	x = sign(D)
 	f = mod(-x, 3) # (-1, +1) -> (1, 2)
@@ -307,23 +287,7 @@ end
 	return quote
 		# println("-> $inds | $(bounds[2])")
 		if inds[$d] == bounds[$f][$d]
-			# println("Natural($D): $inds")
 			lhs.data[$I, inds...] = getindex(bc.expr, s, inds...)
-		end
-	end
-end
-
-@generated function assign_bc_at!(lhs::Field, bc::Natural{D}, s::Val{S}, i::Val{I}, inds, bounds) where {D, I, S}
-	d = abs(D)
-	x = sign(D)
-	f = mod(-x, 3) # (-1, +1) -> (1, 2)
-	n = length(S)
-	o = -x .* kronecker(d)(n)
-	return quote
-		# println("-> $inds | $(bounds[2])")
-		if inds[$d] == bounds[$f][$d]
-			# println("Natural($D): $inds")
-			lhs.data[$I, inds...] = lhs.data[$I, (inds .+ $o)...] + getindex(bc.expr, s, inds...)
 		end
 	end
 end

@@ -11,7 +11,6 @@ export   assign!, reduce, collect_stags, stag_subset, dot
 # internals
 include("./include/scalar.jl")
 include("./include/tensor.jl")
-include("./include/eigenmodes.jl")
 include("./include/linearization.jl")
 
 @generated function assign_at!(lhs::L, rhs::R, inds, bounds) where {L <: NamedTuple, R <: NamedTuple}
@@ -38,13 +37,23 @@ function gridsize(f::Tuple)
 	return nn[1]
 end
 
-
 function assign!(lhs, rhs)
 	n = gridsize(lhs)
 	o = n .- n .+ 1
 	bounds   = (o, n)
 	for i in CartesianIndices <| map((:), bounds...)
 		assign_at!(lhs, rhs, Tuple(i), bounds)
+	end
+end
+
+function assign!(lhs, rhs::Tuple{R, BC}) where {R, BC}
+	n = gridsize(lhs)
+	o = n .- n .+ 1
+	bounds   = (o, n)
+	expr = rhs[1]
+	bcs = parse_bcs(rhs[2])
+	for i in CartesianIndices <| map((:), bounds...)
+		assign_at!(lhs, (expr, bcs), Tuple(i), bounds)
 	end
 end
 
@@ -142,34 +151,6 @@ module Plane
 	const  div_t_stags  =   stag_subset(Volume.div_t_stags,  (:x,  :y,),       1:2)
 	const  div_stags    =   stag_subset(Volume.div_stags, 1:2)
 	const  state_stags  = collect_stags(strain_stags)
-	
-	import ..Essential, ..Natural
-	export Essential, Natural, ImpermeableFreeSlip, PermeableNoSlip
-	
-	Essential(d::Symbol) = (Essential(:-, d, 0), Essential(:+, d, 0))
-	  Natural(d::Symbol) = (  Natural(:-, d, 0),   Natural(:+, d, 0))
-
-	Essential() = (Essential(:x)..., Essential(:y)...)
-	  Natural() = (  Natural(:x)...,   Natural(:y)...)
-
-	ImpermeableFreeSlip() = (
-		s = Essential(),
-		p = Natural(),
-		v = (
-			x = (Essential(:x)..., Natural(:y)...),
-			y = (Essential(:y)..., Natural(:x)...),
-		),
-	)
-	
-	PermeableNoSlip() = (
-		s = Natural(),
-		p = Essential(),
-		v = (
-			x = (Essential(:y)..., Natural(:x)...),
-			y = (Essential(:x)..., Natural(:y)...),
-		),
-	)
-	
 	# TODO: Make dependent on velocity staggering
 end
 
