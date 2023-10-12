@@ -1,6 +1,6 @@
 # module StaggeredKernels
 
-export If, A, D, BD, FD, interpolate, fieldgen, AbstractField, Field, BC, FieldRed, zero_bc#, assign_at, reduce_at
+export If, A, D, BD, FD, interpolate, fieldgen, AbstractField, Field, BC, FieldRed, zero_bc, diag#, assign_at, reduce_at
 
 abstract type AbstractField end
 
@@ -79,6 +79,17 @@ end
 
 fieldgen(f::Function) = FieldGen(f)
 
+struct FieldDiag{F, SS, O} <: AbstractField
+	f::F
+	x::Field{SS}
+end
+
+(diag(x::Field{SS}, f::F, offset = 0 .* SS[1]) where {F, SS}) = FieldDiag{F, SS, offset}(f, x)
+
+function diag(x::Field{SS}, f::Tuple{F, BCs}, offset = 0 .* SS[1]) where {F, BCs, SS}
+	bcs = parse_bcs(f[2])
+	FieldDiag{Tuple{F, typeof(bcs)}, SS, offset}((f[1], bcs), x)
+end
 
 struct BC{D, T <: Scalar}
 	expr::T
@@ -103,14 +114,14 @@ parse_bcs(arg::Pair)        = BC(arg[1], arg[2])
 parse_bcs(args::Tuple)      = map(parse_bcs, args)
 parse_bcs(args::NamedTuple) = (; zip(keys(args), map(v -> parse_bcs(v), values(args)))...)
 
-(lmargin(::Type{BC{D,T}}) where {D,T}) = D < 0 ? .-kronecker(abs(D))(3) : (0, 0, 0,)
-(umargin(::Type{BC{D,T}}) where {D,T}) = D > 0 ? .+kronecker(abs(D))(3) : (0, 0, 0,)
+# (lmargin(::Type{BC{D,T}}) where {D,T}) = D < 0 ? .-kronecker(abs(D))(3) : (0, 0, 0,)
+# (umargin(::Type{BC{D,T}}) where {D,T}) = D > 0 ? .+kronecker(abs(D))(3) : (0, 0, 0,)
 
-lmargin() = (0, 0, 0,)
-umargin() = (0, 0, 0,)
+# lmargin() = (0, 0, 0,)
+# umargin() = (0, 0, 0,)
 
-lmargin(bc1, bc2, bcs...) = map(min, lmargin(bc1), lmargin(bc2, bcs...))
-umargin(bc1, bc2, bcs...) = map(max, umargin(bc1), umargin(bc2, bcs...))
+# lmargin(bc1, bc2, bcs...) = map(min, lmargin(bc1), lmargin(bc2, bcs...))
+# umargin(bc1, bc2, bcs...) = map(max, umargin(bc1), umargin(bc2, bcs...))
 
 combinations(v::Vector, n::Int) = combinations(fill(v, n)...)
 
@@ -155,7 +166,7 @@ function stagindex(ss, s)
 	return i
 end
 
-getindex(x::Number, ::Val, inds...) = x
+getindex(x::Number, ::Val, inds, bounds) = x
 
 function checkbounds(x::Field{SS}, f, inds...) where SS
 	Base.checkbounds(Bool, x.data, f, (inds .+ 1 .- SS[f])...) || error("Out of bounds at index $inds") # TODO: likely only properly checks one of two bounds
@@ -167,42 +178,63 @@ function Base.getindex(x::Field, inds...)
 	return x.data[inds...]
 end
 
-@generated function getindex(x::Field{SS}, ::Val{S}, inds...) where {SS, S}
+@generated function getindex(x::Field{SS}, ::Val{S}, inds, bounds) where {SS, S}
 	f = stagindex(SS, mod.(S, 2))
 	offset = stencil_offset(S)
-
-	# 1 .<= inds .<= size(x.data)[2:end] .+ $(SS[$f] .- 1)
-
-	return :(x[$f, min.(max.(1, inds .+ $offset), size(x.data)[2:end] .+ $(SS[f] .- 1))...]) # This trick imposes automatic Neumann conditions whenever needed.
+	return :(x[$f, min.(max.(bounds[1], inds .+ $offset), bounds[2])...]) # This imposes automatic Neumann conditions whenever needed.
 end
 
 (expr_heads(args...)) = []
 (expr_heads(::Type{Val{S}}, args...) where S) = [S, expr_heads(args...)...]
 
-@generated function getindex(x::FieldExpr{T}, s::Val{S}, inds...) where {T <: Tuple, S}
+@generated function getindex(x::FieldExpr{T}, s::Val{S}, inds, bounds) where {T <: Tuple, S}
 	heads = expr_heads(fieldtypes(T)...)
 	first = length(heads)+1
 	last  = length(fieldtypes(T))
-	args  = [:(getindex(x.contents[$i], s, inds...)) for i in first:last]
+	args  = [:(getindex(x.contents[$i], s, inds, bounds)) for i in first:last]
 	return Expr(heads..., args...)
 end
 
-(getindex(x::FieldShft{S1,T}, s::Val{S2}, inds...) where {T, S1, S2}) = 
-	getindex(x.shiftee, Val(S1 .+ S2), inds...)
+(getindex(x::FieldShft{S1,T}, s::Val{S2}, inds, bounds) where {T, S1, S2}) = 
+	getindex(x.shiftee, Val(S1 .+ S2), inds, bounds)
 
-(getindex(x::FieldGen, s::Val{S}, inds...) where S) = x.func((inds .+ S./2 .- 1)...)
+(getindex(x::FieldGen, s::Val{S}, inds, bounds) where S) = x.func((inds .+ S./2 .- 1)...)
 
 # (stencil(::Type{FieldIntp{A}},      to) where  {A         }) = combinations(map((f, t) -> mod(f,2) == mod(t,2) ? [t] : [t-1,t+1], stags(A)[1], to)...)
 
-@generated function getindex(x::FieldIntp{A}, s::Val{S}, inds...) where {A, S}
+@generated function getindex(x::FieldIntp{A}, s::Val{S}, inds, bounds) where {A, S}
 	sten = combinations(map((f, t) -> mod(f,2) == mod(t,2) ? [t] : [t-1,t+1], stags(A)[1], S)...)
 	size = length(sten)
-	args = [:(getindex(x.interpolant, $(Val(s)), inds...)) for s in sten]
+	args = [:(getindex(x.interpolant, $(Val(s)), inds, bounds)) for s in sten]
 	return Expr(:call, :/, Expr(:call, :+, args...), size)
 end
 
+@generated function getindex(diag::FieldDiag{F, SS, O}, ::Val{S}, inds, bounds) where {F, SS, O, S}
+	f = stagindex(SS, mod.(S, 2))
+	return :(
+		diag.x.data[$f, (inds .+ $O)...] = 1;
+		r = getindex(diag.f, $(Val(.-mod.(S, 2))), inds, bounds);
+		diag.x.data[$f, (inds .+ $O)...] = 0;
+		r
+	)
+end
 
-@generated function reduce_at!(result::AbstractArray{T,0}, op, f::Field{S}, inds, bounds) where {T, S}
+(getindex(f::Tuple{F, BCs}, s::Val{S}, inds, bounds) where {F, BCs <: Tuple, S}) = 
+	getindex((f[2]..., f[1]), s, inds, bounds)
+
+getindex(f::Tuple{Scalar}, s, inds, bounds) = getindex(f[1], s, inds, bounds)
+
+@generated function getindex(args::Tuple{BC{D}, Union{Scalar, BC}, Vararg{Union{Scalar, BC}}}, s, inds, bounds) where D
+	d = abs(D)
+	f = mod(-sign(D), 3) # (-1, +1) -> (1, 2)
+	return :(
+		inds[$d] == bounds[$f][$d] ?
+			getindex(args[1].expr, s, inds, bounds) :
+			getindex(args[2:end],  s, inds, bounds)
+	)
+end
+
+@generated function reduce_at!(result::Ref{T}, op, f::Field{S}, inds, bounds) where {T, S}
 	return Expr(
 		:block,
 		[Expr(
@@ -213,7 +245,7 @@ end
 	)
 end
 
-@generated function reduce_at!(result::AbstractArray{T,0}, op, f1::Field{S}, f2::Field{S}, inds, bounds) where {T, S}
+@generated function reduce_at!(result::Ref{T}, op, f1::Field{S}, f2::Field{S}, inds, bounds) where {T, S}
 	return Expr(
 		:block,
 		[Expr(
@@ -237,20 +269,6 @@ end
 	)
 end
 
-@generated function assign_at!(lhs::Field{S}, rhs::Tuple{R, BCs}, inds, bounds) where {S, R, BCs <: Tuple}
-	return Expr(
-		:block,
-		[:(assign_at!(
-			lhs,
-			rhs[1],
-			$(Val(.-s)),
-			inds,
-			(bounds[1], bounds[2] .+ $(s .- 1)),
-			rhs[2]
-		)) for s in S]...
-	)
-end
-
 #    x   |   x       x       x       x       x       x       x   |   x    
 #        1       2       3       4       5       6       7       8       9
 #        x       x       x       x       x       x       x       x       -
@@ -260,36 +278,11 @@ end
 #        x       x       x       x       x       x       x       x       -
 #        |                                                       |         
 
-@generated function assign_at!(lhs::Field{Stags}, rhs, s::Val{Stag}, inds, bounds, bcs::BCs = ()) where {Stags, Stag, BCs <: Tuple}
-	n = length(Stag)
-	i = stagindex(Stags, mod.(Stag, 2))
+@generated function assign_at!(lhs::Field{Stags}, rhs, s::Val{Stag}, inds, bounds) where {Stags, Stag}
+	f = stagindex(Stags, mod.(Stag, 2))
 	
-	lm = lmargin(fieldtypes(BCs)...)[1:n] # should be negative
-	um = umargin(fieldtypes(BCs)...)[1:n] # should be positive
-	
-	margin = (um .- lm)
-
-	# rotate indices counter-clockwise so that boundary conditions are computed last :-D
-	test_expr =  :(all(bounds[1] .<= inds .<= bounds[2] .- $margin))
-	then_expr =  :(lhs.data[$i, (inds .- $lm)...] = getindex(rhs, s, (inds .- $lm)...))
-	bc_exprs  = [:(assign_bc_at!(lhs, bcs[$j], s, $(Val(i)), mod.(inds .- $lm .- 1, bounds[2]) .+ 1, bounds)) for j in 1:fieldcount(BCs)]
-	else_expr =  Expr(:block, bc_exprs...)
-	
-	return Expr(:if, test_expr, then_expr, else_expr)
-end
-
-@generated function assign_bc_at!(lhs::Field, bc::BC{D}, s::Val{S}, i::Val{I}, inds, bounds) where {D, I, S}
-	d = abs(D)
-	x = sign(D)
-	f = mod(-x, 3) # (-1, +1) -> (1, 2)
-	# n = length(S)
-	# o = -x .* kronecker(d)(n)
-	return quote
-		# println("-> $inds | $(bounds[2])")
-		if inds[$d] == bounds[$f][$d]
-			lhs.data[$I, inds...] = getindex(bc.expr, s, inds...)
-		end
-	end
+	# rotate indices counter-clockwise by 1 so that boundary conditions are computed last :-D
+	:(lhs.data[$f, (mod.(inds, bounds[2]) .+ 1)...] = getindex(rhs, s, mod.(inds, bounds[2]) .+ 1, bounds))
 end
 
 Base.:(+)(a::AbstractField) = a

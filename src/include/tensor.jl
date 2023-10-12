@@ -1,6 +1,6 @@
 # module StaggeredKernels
 
-export Tensor, Vector, L2, J1, J2, J3, I1, I2, I3, tr, dev, divergence, grad, symgrad, curl
+export Tensor, AbstractTensor, Vector, L2, J1, J2, J3, I1, I2, I3, tr, dev, divergence, grad, symgrad, curl, diag
 
 abstract type AbstractTensor end
 
@@ -21,6 +21,11 @@ end
 
 (TensorExpr(args...)) = TensorExpr(tuple(args...))
 TensorOp(op::Symbol, args...) = TensorExpr(Val(:call), Val(op), args...)
+
+(diag(x::Tensor{S}, f::F) where {F, S}) = 
+	Tensor((; zip(keys(x.contents), diag(getproperty(f, c), getproperty(x, c)) for c in keys(x.contents))...), S)
+(diag(x::Tensor{S}, f::F, offset) where {F,S}) = 
+	Tensor((; zip(keys(x.contents), diag(getproperty(f, c), getproperty(x, c), offset) for c in keys(x.contents))...), S)
 
 
 include("./tensor_symmetry.jl")
@@ -186,12 +191,12 @@ end
 
 
 
-@generated function reduce_at!(result::AbstractArray{T,0}, op, field::Tensor{S, NamedTuple{N,Tt}}, inds, bounds) where {T, S, N, Tt}
+@generated function reduce_at!(result::Ref{T}, op, field::Tensor{S, NamedTuple{N,Tt}}, inds, bounds) where {T, S, N, Tt}
 	expr_rules = K -> :(reduce_at!(result, op, getfield(field.cpnts, $K), inds, bounds))
 	return Expr(:block, map(expr_rules, Meta.quot.(N))...)
 end
 
-@generated function reduce_at!(result::AbstractArray{T,0}, op, f1::Tensor{S, NamedTuple{N,Tt1}}, f2::Tensor{S, NamedTuple{N,Tt2}}, inds, bounds) where {T, S, N, Tt1, Tt2}
+@generated function reduce_at!(result::Ref{T}, op, f1::Tensor{S, NamedTuple{N,Tt1}}, f2::Tensor{S, NamedTuple{N,Tt2}}, inds, bounds) where {T, S, N, Tt1, Tt2}
 	expr_rules = K -> :(reduce_at!(result, op, getfield(f1.cpnts, $K), getfield(f2.cpnts, $K), inds, bounds))
 	return Expr(:block, map(expr_rules, Meta.quot.(N))...)
 end
