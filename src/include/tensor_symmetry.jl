@@ -12,11 +12,6 @@ struct MajorIdentity      <: TensorSymmetry{4}; end
 struct MinorIdentity      <: TensorSymmetry{4}; end
 struct Alternating        <: TensorSymmetry{3}; end
 
-# Identity()       =  Tensor(Identity)
-# MajorIdentity()  =  Tensor(MajorIdentity)
-# MinorIdentity()  =  Tensor(MinorIdentity)
-# Alternating()    =  Tensor(Alternating)
-
 @generated function symmetry_expr(::Type{Ones}, x, ::Val{I}) where I
 	J = (1, 1); return :(get_component_by_index(x, Val{$J}()))
 end

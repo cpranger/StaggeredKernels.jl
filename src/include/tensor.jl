@@ -22,16 +22,22 @@ end
 (TensorExpr(args...)) = TensorExpr(tuple(args...))
 TensorOp(op::Symbol, args...) = TensorExpr(Val(:call), Val(op), args...)
 
-(diag(x::Tensor{S}, f::F) where {F, S}) = 
-	Tensor((; zip(keys(x.contents), diag(getproperty(f, c), getproperty(x, c)) for c in keys(x.contents))...), S)
-(diag(x::Tensor{S}, f::F, offset) where {F,S}) = 
-	Tensor((; zip(keys(x.contents), diag(getproperty(f, c), getproperty(x, c), offset) for c in keys(x.contents))...), S)
+(diag(x::Tensor{S}, f) where {S}) = 
+	Tensor((; zip(keys(x.cpnts), diag(getproperty(x, c), getproperty(f, c)) for c in keys(x.cpnts))...), S)
+(diag(x::Tensor{S}, f, offset) where {S}) = 
+	Tensor((; zip(keys(x.cpnts), diag(getproperty(x, c), getproperty(f, c), offset) for c in keys(x.cpnts))...), S)
 
+(diag(x::Tensor{S}, f::Tuple) where {S}) = 
+Tensor((; zip(keys(x.cpnts), diag(getproperty(x, c), getproperty.(f, c)) for c in keys(x.cpnts))...), S)
+(diag(x::Tensor{S}, f::Tuple, offset) where {S}) = 
+Tensor((; zip(keys(x.cpnts), diag(getproperty(x, c), getproperty.(f, c), offset) for c in keys(x.cpnts))...), S)
 
 include("./tensor_symmetry.jl")
 
 Base.imag(a::AbstractTensor) = TensorOp(:imag, a)
 Base.real(a::AbstractTensor) = TensorOp(:real, a)
+ Base.abs(a::AbstractTensor) = TensorOp(:abs,  a)
+Base.sqrt(a::AbstractTensor) = TensorOp(:sqrt, a)
 
 Base.:*(a::AbstractTensor, b::AbstractTensor) =  TensorProd(a,   b)
 Base.:*(a::AbstractTensor, b::Scalar        ) =  TensorOp(:*, a, b)
@@ -42,20 +48,12 @@ Base.:+(a::AbstractTensor, b::AbstractTensor) =  TensorOp(:+, a, b)
 Base.:-(a::AbstractTensor, b::AbstractTensor) =  TensorOp(:-, a, b)
 Base.:-(a::AbstractTensor)                    =  TensorOp(:-, a)
 
-(nt_prod(a::Scalar, b::NamedTuple{N}) where {N}) = NamedTuple{N}(map(v -> a * v, values(b)))
-(nt_prod(a::NamedTuple{N}, b::Scalar) where {N}) = NamedTuple{N}(map(v -> b * v, values(a)))
-
-# (Base.:*(a::Scalar, b::Tensor{S}) where S) = Tensor(nt_prod(  a, b.cpnts), S)
-# (Base.:*(a::Tensor{S}, b::Scalar) where S) = Tensor(nt_prod(  b, a.cpnts), S)
-# (Base.:/(a::Tensor{S}, b::Scalar) where S) = Tensor(nt_prod(1/b, a.cpnts), S)
-
 Base.:/(a::AbstractTensor, b::Tensor{Unsymmetric{1}}) = Vector((x = a.x/b.x, y = a.y/b.y, z = a.z/b.z,))
 
 (tensor_pow(arg::AbstractTensor, ::Val{1})        ) = arg
 (tensor_pow(arg::AbstractTensor, ::Val{P}) where P) = arg * tensor_pow(arg, Val(P-1))
 
 Base.:^(arg::AbstractTensor, pow::Int) = pow > 0 ? tensor_pow(arg, Val(pow)) : error("pow <= 0.")
-
 
 struct TensorAdjoint{T <: AbstractTensor} <: AbstractTensor
 	t::T
@@ -142,11 +140,20 @@ end
 	return Expr(heads..., args...)
 end
 
-function has_component(::Type{TensorExpr{T}}, c::Val) where {T}
-	heads = expr_heads(fieldtypes(T)...)
-	first = length(heads)+1
-	last  = length(fieldtypes(T))
-	return all([has_component(p.contents[i], c) for i in first:last])
+function has_component(::Type{TensorExpr{T}}, c::Val) where {T <: Tuple{Val{:call}, Val{:+}, Vararg}}
+	return any([has_component(t, c) for t in fieldtypes(T)[3:end]])
+end
+
+function has_component(::Type{TensorExpr{T}}, c::Val) where {T <: Tuple{Val{:call}, Val{:-}, Vararg}}
+	return any([has_component(t, c) for t in fieldtypes(T)[3:end]])
+end
+
+function has_component(::Type{TensorExpr{T}}, c::Val) where {T <: Tuple{Val{:call}, Val{:*}, Vararg}}
+	return all([has_component(t, c) for t in fieldtypes(T)[3:end]])
+end
+
+function has_component(::Type{TensorExpr{T}}, c::Val) where {T <: Tuple{Val{:call}, Val{:/}, Vararg}}
+	return all([has_component(t, c) for t in fieldtypes(T)[3:end]])
 end
 
 @generated function get_component(p::TensorAdjoint{T}, c::Val{C}) where {T, C}
@@ -189,6 +196,29 @@ end
 	return result
 end
 
+function has_component(::Type{TensorProd{T1,T2}}, c::Val{C}) where {T1, T2, C}
+	oa = tensor_order(T1)
+	ob = tensor_order(T2)
+	oc = tensor_order(TensorProd{T1,T2})
+	
+	cc = div(oa + ob - oc, 2)
+	
+	indx = decode_component(C)
+	
+	ia = indx[1:oa-cc]
+	ib = indx[oa-cc+1:end]
+	
+	Ic = combinations([1, 2, 3], cc)
+	
+	for ic in Ic
+		ca = Val <| encode_component <| (ia..., ic...)
+		cb = Val <| encode_component <| (ic..., ib...)
+		
+		has_component(T1, ca) && has_component(T2, cb) && return true
+	end
+	
+	return false
+end
 
 
 @generated function reduce_at!(result::Ref{T}, op, field::Tensor{S, NamedTuple{N,Tt}}, inds, bounds) where {T, S, N, Tt}

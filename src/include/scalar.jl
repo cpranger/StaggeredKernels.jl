@@ -280,9 +280,7 @@ end
 
 @generated function assign_at!(lhs::Field{Stags}, rhs, s::Val{Stag}, inds, bounds) where {Stags, Stag}
 	f = stagindex(Stags, mod.(Stag, 2))
-	
-	# rotate indices counter-clockwise by 1 so that boundary conditions are computed last :-D
-	:(lhs.data[$f, (mod.(inds, bounds[2]) .+ 1)...] = getindex(rhs, s, mod.(inds, bounds[2]) .+ 1, bounds))
+	return :(lhs.data[$f, inds...] = getindex(rhs, s, inds, bounds))
 end
 
 Base.:(+)(a::AbstractField) = a

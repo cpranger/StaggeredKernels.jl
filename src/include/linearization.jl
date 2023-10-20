@@ -31,8 +31,8 @@ linearize(f, a::Tuple, x, b::Tuple; h = eps(Float32)) = v -> cstep(f(a..., x + h
 (Base.:-(bc::BC{D}) where D) = BC{D}(-bc.expr)
 
 (Base.:+(a::Tuple{A, ABCs}, b::Tuple{B, BBCs}) where {A, B, ABCs <: Tuple, BBCs <: Tuple}) = (a[1] + b[1], a[2] .+ b[2])
-(Base.:+(a::Tuple{A, BCs}, b::B) where {A <: AbstractField, B, BCs <: Tuple}) = (a[1] + b, map(bc -> bc + b, a[2]))
-(Base.:+(a::A, b::Tuple{B, BCs}) where {A, B <: AbstractField, BCs <: Tuple}) = (a + b[1], map(bc -> a + bc, b[2]))
+(Base.:+(a::Tuple{A, BCs}, b::B) where {A <: AbstractField, B <: Scalar, BCs <: Tuple}) = (a[1] + b, map(bc -> bc + b, a[2]))
+(Base.:+(a::A, b::Tuple{B, BCs}) where {A <: Scalar, B <: AbstractField, BCs <: Tuple}) = (a + b[1], map(bc -> a + bc, b[2]))
 (Base.:+(a::Tuple{A, ABCs}, b::Tuple{B, BBCs}) where {A <: AbstractTensor, B <: AbstractTensor, ABCs <: NamedTuple, BBCs <: NamedTuple}) = (a[1] + b[1], (; zip(keys(a[2]), map((bca, bcb) -> bca + bcb, getproperty(a[2], k), getproperty(b[2], k)) for k in intersect(keys(a[2]), keys(b[2])))...))
 (Base.:+(a::Tuple{A, BCs}, b::B) where {A <: AbstractTensor, B <: AbstractTensor, BCs <: NamedTuple}) = (a[1] + b, (; zip(keys(a[2]), map(bc -> bc + getproperty(b, k), getproperty(a[2], k)) for k in keys(a[2]))...))
 (Base.:+(a::A, b::Tuple{B, BCs}) where {A <: AbstractTensor, B <: AbstractTensor, BCs <: NamedTuple}) = (a + b[1], (; zip(keys(b[2]), map(bc -> getproperty(a, k) + bc, getproperty(b[2], k)) for k in keys(b[2]))...))
@@ -43,8 +43,8 @@ linearize(f, a::Tuple, x, b::Tuple; h = eps(Float32)) = v -> cstep(f(a..., x + h
 (Base.:+(a::Pair, b::Pair)) = a[1] == b[1] ? a[1] => a[2] + b[2] : error("Unequal keys.")
 
 (Base.:-(a::Tuple{A, ABCs}, b::Tuple{B, BBCs}) where {A, B, ABCs <: Tuple, BBCs <: Tuple}) = (a[1] - b[1], a[2] .- b[2])
-(Base.:-(a::Tuple{A, BCs}, b::B) where {A, B, BCs <: Tuple}) = (a[1] - b, map(bc -> bc - b, a[2]))
-(Base.:-(a::A, b::Tuple{B, BCs}) where {A, B, BCs <: Tuple}) = (a - b[1], map(bc -> a - bc, b[2]))
+(Base.:-(a::Tuple{A, BCs}, b::B) where {A <: AbstractField, B <: Scalar, BCs <: Tuple}) = (a[1] - b, map(bc -> bc - b, a[2]))
+(Base.:-(a::A, b::Tuple{B, BCs}) where {A <: Scalar, B <: AbstractField, BCs <: Tuple}) = (a - b[1], map(bc -> a - bc, b[2]))
 (Base.:-(a::Tuple{A, ABCs}, b::Tuple{B, BBCs}) where {A <: AbstractTensor, B <: AbstractTensor, ABCs <: NamedTuple, BBCs <: NamedTuple}) = (a[1] - b[1], (; zip(keys(a[2]), map((bca, bcb) -> bca - bcb, getproperty(a[2], k), getproperty(b[2], k)) for k in intersect(keys(a[2]), keys(b[2])))...))
 (Base.:-(a::Tuple{A, BCs}, b::B) where {A <: AbstractTensor, B <: AbstractTensor, BCs <: NamedTuple}) = (a[1] - b, (; zip(keys(a[2]), map(bc -> bc - getproperty(b, k), getproperty(a[2], k)) for k in keys(a[2]))...))
 (Base.:-(a::A, b::Tuple{B, BCs}) where {A <: AbstractTensor, B <: AbstractTensor, BCs <: NamedTuple}) = (a - b[1], (; zip(keys(b[2]), map(bc -> getproperty(a, k) - bc, getproperty(b[2], k)) for k in keys(b[2]))...))
@@ -55,8 +55,8 @@ linearize(f, a::Tuple, x, b::Tuple; h = eps(Float32)) = v -> cstep(f(a..., x + h
 (Base.:-(a::Pair, b::Pair)) = a[1] == b[1] ? a[1] => a[2] - b[2] : error("Unequal keys.")
 
 (Base.:*(a::Tuple{A, ABCs}, b::Tuple{B, BBCs}) where {A, B, ABCs <: Tuple, BBCs <: Tuple}) = (a[1] * b[1], a[2] .* b[2])
-(Base.:*(a::Tuple{A, BCs}, b::B) where {A <: AbstractField, B, BCs <: Tuple}) = (a[1] * b, map(bc -> bc * b, a[2]))
-(Base.:*(a::A, b::Tuple{B, BCs}) where {A, B <: AbstractField, BCs <: Tuple}) = (a * b[1], map(bc -> a * bc, b[2]))
+(Base.:*(a::Tuple{A, BCs}, b::B) where {A <: AbstractField, B <: Scalar, BCs <: Tuple}) = (a[1] * b, map(bc -> bc * b, a[2]))
+(Base.:*(a::A, b::Tuple{B, BCs}) where {A <: Scalar, B <: AbstractField, BCs <: Tuple}) = (a * b[1], map(bc -> a * bc, b[2]))
 (Base.:*(a::Tuple{A, ABCs}, b::Tuple{B, BBCs}) where {A <: AbstractTensor, B <: AbstractTensor, ABCs <: NamedTuple, BBCs <: NamedTuple}) = (a[1] * b[1], (; zip(keys(a[2]), map((bca, bcb) -> bca * bcb, getproperty(a[2], k), getproperty(b[2], k)) for k in intersect(keys(a[2]), keys(b[2])))...))
 (Base.:*(a::Tuple{A, BCs}, b::B) where {A <: AbstractTensor, B <: AbstractTensor, BCs <: NamedTuple}) = (a[1] * b, (; zip(keys(a[2]), map(bc -> bc * getproperty(b, k), getproperty(a[2], k)) for k in keys(a[2]))...))
 (Base.:*(a::A, b::Tuple{B, BCs}) where {A <: AbstractTensor, B <: AbstractTensor, BCs <: NamedTuple}) = (a * b[1], (; zip(keys(b[2]), map(bc -> getproperty(a, k) * bc, getproperty(b[2], k)) for k in keys(b[2]))...))
@@ -67,8 +67,8 @@ linearize(f, a::Tuple, x, b::Tuple; h = eps(Float32)) = v -> cstep(f(a..., x + h
 (Base.:*(a::Pair, b::Pair)) = a[1] == b[1] ? a[1] => a[2] * b[2] : error("Unequal keys.")
 
 (Base.:/(a::Tuple{A, ABCs}, b::Tuple{B, BBCs}) where {A, B, ABCs <: Tuple, BBCs <: Tuple}) = (a[1] / b[1], a[2] ./ b[2])
-(Base.:/(a::Tuple{A, BCs}, b::B) where {A <: AbstractField, B, BCs <: Tuple}) = (a[1] / b, map(bc -> bc / b, a[2]))
-(Base.:/(a::A, b::Tuple{B, BCs}) where {A, B <: AbstractField, BCs <: Tuple}) = (a / b[1], map(bc -> a / bc, b[2]))
+(Base.:/(a::Tuple{A, BCs}, b::B) where {A <: AbstractField, B <: Scalar, BCs <: Tuple}) = (a[1] / b, map(bc -> bc / b, a[2]))
+(Base.:/(a::A, b::Tuple{B, BCs}) where {A <: Scalar, B <: AbstractField, BCs <: Tuple}) = (a / b[1], map(bc -> a / bc, b[2]))
 (Base.:/(a::Tuple{A, ABCs}, b::Tuple{B, BBCs}) where {A <: AbstractTensor, B <: AbstractTensor, ABCs <: NamedTuple, BBCs <: NamedTuple}) = (a[1] / b[1], (; zip(keys(a[2]), map((bca, bcb) -> bca / bcb, getproperty(a[2], k), getproperty(b[2], k)) for k in intersect(keys(a[2]), keys(b[2])))...))
 (Base.:/(a::Tuple{A, BCs}, b::B) where {A <: AbstractTensor, B <: AbstractTensor, BCs <: NamedTuple}) = (a[1] / b, (; zip(keys(a[2]), map(bc -> bc / getproperty(b, k), getproperty(a[2], k)) for k in keys(a[2]))...))
 (Base.:/(a::A, b::Tuple{B, BCs}) where {A <: AbstractTensor, B <: AbstractTensor, BCs <: NamedTuple}) = (a / b[1], (; zip(keys(b[2]), map(bc -> getproperty(a, k) / bc, getproperty(b[2], k)) for k in keys(b[2]))...))
