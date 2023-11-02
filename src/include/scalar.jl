@@ -114,15 +114,6 @@ parse_bcs(arg::Pair)        = BC(arg[1], arg[2])
 parse_bcs(args::Tuple)      = map(parse_bcs, args)
 parse_bcs(args::NamedTuple) = (; zip(keys(args), map(v -> parse_bcs(v), values(args)))...)
 
-# (lmargin(::Type{BC{D,T}}) where {D,T}) = D < 0 ? .-kronecker(abs(D))(3) : (0, 0, 0,)
-# (umargin(::Type{BC{D,T}}) where {D,T}) = D > 0 ? .+kronecker(abs(D))(3) : (0, 0, 0,)
-
-# lmargin() = (0, 0, 0,)
-# umargin() = (0, 0, 0,)
-
-# lmargin(bc1, bc2, bcs...) = map(min, lmargin(bc1), lmargin(bc2, bcs...))
-# umargin(bc1, bc2, bcs...) = map(max, umargin(bc1), umargin(bc2, bcs...))
-
 combinations(v::Vector, n::Int) = combinations(fill(v, n)...)
 
 function combinations(vecs::Vector...)
@@ -168,20 +159,19 @@ end
 
 getindex(x::Number, ::Val, inds, bounds) = x
 
-function checkbounds(x::Field{SS}, f, inds...) where SS
-	Base.checkbounds(Bool, x.data, f, (inds .+ 1 .- SS[f])...) || error("Out of bounds at index $inds") # TODO: likely only properly checks one of two bounds
-	return true
-end
-
-function Base.getindex(x::Field, inds...)
-	@boundscheck checkbounds(x, inds...)
-	return x.data[inds...]
-end
+Base.getindex( x::Field,      inds...) =  x.data[inds...]
+Base.setindex!(x::Field, val, inds...) = (x.data[inds...] = val)
 
 @generated function getindex(x::Field{SS}, ::Val{S}, inds, bounds) where {SS, S}
 	f = stagindex(SS, mod.(S, 2))
 	offset = stencil_offset(S)
-	return :(x[$f, min.(max.(bounds[1], inds .+ $offset), bounds[2])...]) # This imposes automatic Neumann conditions whenever needed.
+	return :(x[$f, min.(max.(bounds[1], inds .+ $offset), bounds[2] .+ $(mod.(S, 2) .- 1))...]) # This imposes automatic Neumann conditions whenever needed.
+end
+
+@generated function setindex!(x::Field{SS}, val, ::Val{S}, inds, bounds) where {SS, S}
+	f = stagindex(SS, mod.(S, 2))
+	offset = stencil_offset(S)
+	return :(x[$f, min.(max.(bounds[1], inds .+ $offset), bounds[2] .+ $(mod.(S, 2) .- 1))...] = val) # This imposes automatic Neumann conditions whenever needed.
 end
 
 (expr_heads(args...)) = []
@@ -195,14 +185,12 @@ end
 	return Expr(heads..., args...)
 end
 
-(getindex(x::FieldShft{S1,T}, s::Val{S2}, inds, bounds) where {T, S1, S2}) = 
+(getindex(x::FieldShft{S1,T}, ::Val{S2}, inds, bounds) where {T, S1, S2}) = 
 	getindex(x.shiftee, Val(S1 .+ S2), inds, bounds)
 
 (getindex(x::FieldGen, s::Val{S}, inds, bounds) where S) = x.func((inds .+ S./2 .- 1)...)
 
-# (stencil(::Type{FieldIntp{A}},      to) where  {A         }) = combinations(map((f, t) -> mod(f,2) == mod(t,2) ? [t] : [t-1,t+1], stags(A)[1], to)...)
-
-@generated function getindex(x::FieldIntp{A}, s::Val{S}, inds, bounds) where {A, S}
+@generated function getindex(x::FieldIntp{A}, ::Val{S}, inds, bounds) where {A, S}
 	sten = combinations(map((f, t) -> mod(f,2) == mod(t,2) ? [t] : [t-1,t+1], stags(A)[1], S)...)
 	size = length(sten)
 	args = [:(getindex(x.interpolant, $(Val(s)), inds, bounds)) for s in sten]
@@ -211,10 +199,11 @@ end
 
 @generated function getindex(diag::FieldDiag{F, SS, O}, ::Val{S}, inds, bounds) where {F, SS, O, S}
 	f = stagindex(SS, mod.(S, 2))
+	s = (Val(.-mod.(S, 2)))
 	return :(
-		diag.x.data[$f, (inds .+ $O)...] = 1;
-		r = getindex(diag.f, $(Val(.-mod.(S, 2))), inds, bounds);
-		diag.x.data[$f, (inds .+ $O)...] = 0;
+		setindex!(diag.x, 1, $s, inds .+ $O, bounds);
+		r = getindex(diag.f, $s, inds,       bounds);
+		setindex!(diag.x, 0, $s, inds .+ $O, bounds);
 		r
 	)
 end
@@ -224,11 +213,12 @@ end
 
 getindex(f::Tuple{Scalar}, s, inds, bounds) = getindex(f[1], s, inds, bounds)
 
-@generated function getindex(args::Tuple{BC{D}, Union{Scalar, BC}, Vararg{Union{Scalar, BC}}}, s, inds, bounds) where D
+@generated function getindex(args::Tuple{BC{D}, Union{Scalar, BC}, Vararg{Union{Scalar, BC}}}, s::Val{S}, inds, bounds) where {D, S}
 	d = abs(D)
-	f = mod(-sign(D), 3) # (-1, +1) -> (1, 2)
+	f = mod(-sign(D), 3) # (-n, +m) -> (1, 2) ∀ n, m ∈ N+
+	o = Int(f == 2) * (mod(S[d], 2) - 1)
 	return :(
-		inds[$d] == bounds[$f][$d] ?
+		inds[$d] == (bounds[$f][$d] + $o) ?
 			getindex(args[1].expr, s, inds, bounds) :
 			getindex(args[2:end],  s, inds, bounds)
 	)
@@ -239,9 +229,12 @@ end
 		:block,
 		[Expr(
 			:if,
-			:(all(bounds[1] .<= inds .<= bounds[2] .+ $(S[i] .- 1))),
-			:(result[] = op(result[], f.data[$i, inds...]))
-		) for i in eachindex(S)]...
+			:(all(bounds[1] .<= inds .<= bounds[2] .+ $(mod.(s, 2) .- 1))),
+			:(result[] = op(
+				result[],
+				getindex(f, $(Val(.-s)), inds, bounds)
+			))
+		) for s in S]...
 	)
 end
 
@@ -250,9 +243,13 @@ end
 		:block,
 		[Expr(
 			:if,
-			:(all(bounds[1] .<= inds .<= bounds[2] .+ $(S[i] .- 1))),
-			:(result[] = op(result[], f1.data[$i, inds...], f2.data[$i, inds...]))
-		) for i in eachindex(S)]...
+			:(all(bounds[1] .<= inds .<= bounds[2] .+ $(mod.(s, 2) .- 1))),
+			:(result[] = op(
+				result[],
+				getindex(f1, $(Val(.-s)), inds, bounds),
+				getindex(f2, $(Val(.-s)), inds, bounds)
+			))
+		) for s in S]...
 	)
 end
 
@@ -264,7 +261,7 @@ end
 			rhs,
 			$(Val(.-s)),
 			inds,
-			(bounds[1], bounds[2] .+ $(s .- 1))
+			bounds
 		)) for s in S]...
 	)
 end
@@ -280,7 +277,7 @@ end
 
 @generated function assign_at!(lhs::Field{Stags}, rhs, s::Val{Stag}, inds, bounds) where {Stags, Stag}
 	f = stagindex(Stags, mod.(Stag, 2))
-	return :(lhs.data[$f, inds...] = getindex(rhs, s, inds, bounds))
+	return :(all(inds .<= (bounds[2] .+ $(mod.(Stag, 2) .- 1))) ? (lhs[$f, inds...] = getindex(rhs, s, inds, bounds)) : ())
 end
 
 Base.:(+)(a::AbstractField) = a

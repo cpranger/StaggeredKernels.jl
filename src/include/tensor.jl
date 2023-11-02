@@ -1,6 +1,6 @@
 # module StaggeredKernels
 
-export Tensor, AbstractTensor, Vector, L2, J1, J2, J3, I1, I2, I3, tr, dev, divergence, grad, symgrad, curl, diag
+export Tensor, AbstractTensor, Vector, L2, J1, J2, J3, I1, I2, I3, tr, dev, divergence, grad, symgrad, curl, diag, TensorOp
 
 abstract type AbstractTensor end
 
@@ -154,6 +154,10 @@ end
 
 function has_component(::Type{TensorExpr{T}}, c::Val) where {T <: Tuple{Val{:call}, Val{:/}, Vararg}}
 	return all([has_component(t, c) for t in fieldtypes(T)[3:end]])
+end
+
+function has_component(::Type{TensorExpr{Tuple{Val{:call}, V, T}}}, c::Val) where {V <: Val, T <: AbstractTensor}
+	return has_component(T, c)
 end
 
 @generated function get_component(p::TensorAdjoint{T}, c::Val{C}) where {T, C}
