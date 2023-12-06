@@ -1,5 +1,7 @@
 # module StaggeredKernels
 
+export AbstractObject
+
 const AbstractObject    = Union{AbstractScalar, AbstractTensor}
 
 (Base.:+(a::BC{D}) where D)         = a

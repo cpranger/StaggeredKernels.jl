@@ -7,7 +7,7 @@ export   assign!, reduce, collect_stags, stag_subset, dot, l2
 # internals
 include("./include/scalar.jl")
 include("./include/tensor.jl")
-include("./include/linearization.jl")
+include("./include/arithmetic.jl")
 
 @generated function assign_at!(lhs::L, rhs::R, inds, bounds) where {L <: Tuple, R <: Tuple}
 	(ll, lr) = (length(lhs.parameters), length(rhs.parameters))
