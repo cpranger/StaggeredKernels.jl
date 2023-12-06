@@ -29,7 +29,7 @@ function tensor_order(::Type{TensorExpr{T}}) where {T}
 	return orders[end]
 end
 
-(tensor_order(::Type{S}) where {S <: Scalar}) = 0
+(tensor_order(::Type{S}) where {S <: AbstractScalar}) = 0
 
 
 (symmetry_order(::TensorSymmetry{O}) where O) = O

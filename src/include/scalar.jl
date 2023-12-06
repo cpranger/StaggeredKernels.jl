@@ -1,15 +1,14 @@
 # module StaggeredKernels
 
-export If, A, D, BD, FD, interpolate, fieldgen, AbstractField, Field, BC, FieldRed, zero_bc, diag#, assign_at, reduce_at
+export If, A, D, BD, FD, BA, FA, interpolate, fieldgen, AbstractScalarField, Field, BC, diag#, assign_at, reduce_at
 
-abstract type AbstractField end
+abstract type AbstractScalarField end
 
-const Scalar = Union{Number,AbstractField}
+const AbstractScalar = Union{Number, AbstractScalarField}
 
-struct Field{Indx, T <: AbstractArray} <: AbstractField
+struct Field{Indx, T <: AbstractArray} <: AbstractScalarField
 	data::T
 end
-
 (Field(dims::NTuple{N,I}, stags::NTuple{M, NTuple{N,I}}) where {M, N, I  <: Int}) =
     Field{stags}(zeros(M, dims...))
 	
@@ -17,17 +16,17 @@ end
     Field{SS, T}(data)
 
 # TODO: TEST DEEP VS SHALLOW COPY WHEN CONSTRUCTING
-struct FieldExpr{T <: Tuple} <: AbstractField
+struct FieldExpr{T <: Tuple} <: AbstractScalarField
 	contents::T
 end
 
 # (FieldExpr(args::T) where T <: Tuple) = FieldExpr{T}(args)
 (FieldExpr(args...)) = FieldExpr(tuple(args...))
 
-FieldOp(op::Symbol, args...) = FieldExpr(Val(:call), Val(op), args...)
+ScalarOp(op::Symbol, args...) = FieldExpr(Val(:call), Val(op), args...)
 If(c::FieldExpr, t, f = 0) = FieldExpr(Val(:if), c, t, f)
 
-struct FieldShft{S, T <: AbstractField} <: AbstractField
+struct FieldShft{S, T <: AbstractScalarField} <: AbstractScalarField
 	shiftee::T
 end
 
@@ -41,78 +40,65 @@ kronecker(i) = n -> Tuple([kronecker(i, j) for j in 1:n])
 BD(x::Number, ::Symbol) = 0
 FD(x::Number, ::Symbol) = 0
  A(x::Number, ::Symbol) = x
+BA(x::Number, ::Symbol) = x
+FA(x::Number, ::Symbol) = x
 
  D(x, d::Symbol) =  D(x, decode_component(d)[1])
 BD(x, d::Symbol) = BD(x, decode_component(d)[1])
 FD(x, d::Symbol) = FD(x, decode_component(d)[1])
  A(x, d::Symbol) =  A(x, decode_component(d)[1])
+BA(x, d::Symbol) = BA(x, decode_component(d)[1])
+FA(x, d::Symbol) = FA(x, decode_component(d)[1])
 
  D(x, d::Int   ) = d <= my_ndims(x) ?  D(x, kronecker(d)(my_ndims(x))) : 0
 BD(x, d::Int   ) = d <= my_ndims(x) ? BD(x, kronecker(d)(my_ndims(x))) : 0
 FD(x, d::Int   ) = d <= my_ndims(x) ? FD(x, kronecker(d)(my_ndims(x))) : 0
  A(x, d::Int   ) = d <= my_ndims(x) ?  A(x, kronecker(d)(my_ndims(x))) : 0
+BA(x, d::Int   ) = d <= my_ndims(x) ? BA(x, kronecker(d)(my_ndims(x))) : 0
+FA(x, d::Int   ) = d <= my_ndims(x) ? FA(x, kronecker(d)(my_ndims(x))) : 0
 
- D(x::AbstractField, d::NTuple) = (S(x, .+d) - S(x, .-d))
-BD(x::AbstractField, d::NTuple) =  S(D(x, d), .-d)
-FD(x::AbstractField, d::NTuple) =  S(D(x, d), .+d)
- A(x::AbstractField, d::NTuple) = (S(x,    .+d) + S(x,    .-d))/2
+ D(x::AbstractScalarField, d::NTuple) = (S(x, .+d) - S(x, .-d))
+BD(x::AbstractScalarField, d::NTuple) =  S(D(x, d), .-d)
+FD(x::AbstractScalarField, d::NTuple) =  S(D(x, d), .+d)
+ A(x::AbstractScalarField, d::NTuple) = (S(x,    .+d) + S(x,    .-d))/2
+BA(x::AbstractScalarField, d::NTuple) =  S(A(x, d), .-d)
+FA(x::AbstractScalarField, d::NTuple) =  S(A(x, d), .+d)
 
 ( D(x::NTuple{M,NTuple{N,I}}, d::NTuple) where {N, M, I <: Int}) = Tuple <| unique <| map(s -> mod.(s .+ d, 2), x)
 ( A(x::NTuple{M,NTuple{N,I}}, d::NTuple) where {N, M, I <: Int}) = Tuple <| unique <| map(s -> mod.(s .+ d, 2), x)
 
 
-struct FieldIntp{T} <: AbstractField
+struct FieldIntp{T} <: AbstractScalarField
 	interpolant::T
 end
 
 interpolate(arg::Number) = arg
 
-function interpolate(arg::T) where T <: AbstractField
+function interpolate(arg::T) where T <: AbstractScalarField
 	s = stags(T)
 	length(s) == 1 || error("Currently only one stag supported per field.")
 	return FieldIntp{T}(arg)
 end
 
-struct FieldGen{F <: Function} <: AbstractField
+struct FieldGen{F <: Function} <: AbstractScalarField
 	func::F
 end
 
 fieldgen(f::Function) = FieldGen(f)
 
-struct FieldDiag{F, SS, O} <: AbstractField
+struct FieldDiag{F, SS, O} <: AbstractScalarField
 	f::F
 	x::Field{SS}
 end
 
 (diag(x::Field{SS}, f::F, offset = 0 .* SS[1]) where {F, SS}) = FieldDiag{F, SS, offset}(f, x)
 
-function diag(x::Field{SS}, f::Tuple{F, BCs}, offset = 0 .* SS[1]) where {F, BCs, SS}
-	bcs = parse_bcs(f[2])
-	FieldDiag{Tuple{F, typeof(bcs)}, SS, offset}((f[1], bcs), x)
-end
-
-struct BC{D, T <: Scalar}
+struct BC{D, T <: AbstractScalar}
 	expr::T
 end
 
-function parse_bc_dir(signaxis::String)
-	sign, axis = split(signaxis, "")
-	
-	sign_dict  = Dict(["-" => -1, "+" => +1])
-	axis_dict  = Dict(["x" =>  1, "y" =>  2, "z" =>  3])
-	
-	sign in keys(sign_dict) || error( "first character should be in $(keys(sign_dict)).")
-	axis in keys(axis_dict) || error("second character should be in $(keys(axis_dict)).")
-	
-	return sign_dict[sign] * axis_dict[axis]
-end
-
-(BC{D}(val::T) where {D, T <: Scalar}) = BC{D,T}(val)
-(BC(d::String, val::T) where T <: Scalar) = BC{parse_bc_dir(d), T}(val)
-
-parse_bcs(arg::Pair)        = BC(arg[1], arg[2])
-parse_bcs(args::Tuple)      = map(parse_bcs, args)
-parse_bcs(args::NamedTuple) = (; zip(keys(args), map(v -> parse_bcs(v), values(args)))...)
+(BC{D}(val::T) where {D,  T <: AbstractScalar}) = BC{D,T}(val)
+(BC(d::Int, val::T) where T <: AbstractScalar ) = BC{d,T}(val)
 
 combinations(v::Vector, n::Int) = combinations(fill(v, n)...)
 
@@ -211,16 +197,17 @@ end
 (getindex(f::Tuple{F, BCs}, s::Val{S}, inds, bounds) where {F, BCs <: Tuple, S}) = 
 	getindex((f[2]..., f[1]), s, inds, bounds)
 
-getindex(f::Tuple{Scalar}, s, inds, bounds) = getindex(f[1], s, inds, bounds)
+getindex(f::Tuple{AbstractScalar}, s, inds, bounds) = getindex(f[1], s, inds, bounds)
 
-@generated function getindex(args::Tuple{BC{D}, Union{Scalar, BC}, Vararg{Union{Scalar, BC}}}, s::Val{S}, inds, bounds) where {D, S}
+@generated function getindex(args::Tuple{BC{D}, Union{AbstractScalar, BC}, Vararg{Union{AbstractScalar, BC}}}, s::Val{S}, inds, bounds) where {D, S}
 	d = abs(D)
 	f = mod(-sign(D), 3) # (-n, +m) -> (1, 2) ∀ n, m ∈ N+
-	o = Int(f == 2) * (mod(S[d], 2) - 1)
+	o = mod.(S, 2) .- 1
 	return :(
-		inds[$d] == (bounds[$f][$d] + $o) ?
-			getindex(args[1].expr, s, inds, bounds) :
-			getindex(args[2:end],  s, inds, bounds)
+		inds[$d] == (bounds[$f][$d] + $(Int(f == 2) * o[d])) ? (
+			#=bounds[1][3-$d] < inds[3-$d] < (bounds[2][3-$d] + $o[3-$d]) ?=#
+				getindex(args[1].expr, s, inds, bounds) #=: 0=#
+			) : getindex(args[2:end],  s, inds, bounds)
 	)
 end
 
@@ -238,7 +225,14 @@ end
 	)
 end
 
-@generated function reduce_at!(result::Ref{T}, op, f1::Field{S}, f2::Field{S}, inds, bounds) where {T, S}
+reduce_at!(result::Ref, op, f1::Field,               f2::Field,               inds, bounds) =
+	reduce_at_impl_!(result, op, f2, f1, inds, bounds)
+reduce_at!(result::Ref, op, f1::AbstractScalarField, f2::Field,               inds, bounds) =
+	reduce_at_impl_!(result, op, f2, f1, inds, bounds)
+reduce_at!(result::Ref, op, f1::Field,               f2::AbstractScalarField, inds, bounds) =
+	reduce_at_impl_!(result, op, f1, f2, inds, bounds)
+
+@generated function reduce_at_impl_!(result::Ref, op, f1::Field{S}, f2::AbstractScalarField, inds, bounds) where S
 	return Expr(
 		:block,
 		[Expr(
@@ -280,58 +274,59 @@ end
 	return :(all(inds .<= (bounds[2] .+ $(mod.(Stag, 2) .- 1))) ? (lhs[$f, inds...] = getindex(rhs, s, inds, bounds)) : ())
 end
 
-Base.:(+)(a::AbstractField) = a
-Base.:(-)(a::AbstractField) = FieldOp(:-, a)
+# Base.:(+)(a::AbstractScalarField) = a
+# Base.:(-)(a::AbstractScalarField) = ScalarOp(:-, a)
 
-Base.sqrt(a::AbstractField) = FieldOp(:sqrt, a)
-Base.imag(a::AbstractField) = FieldOp(:imag, a)
-Base.real(a::AbstractField) = FieldOp(:real, a)
+# Base.sqrt(a::AbstractScalarField) = ScalarOp(:sqrt, a)
+# Base.imag(a::AbstractScalarField) = ScalarOp(:imag, a)
+# Base.real(a::AbstractScalarField) = ScalarOp(:real, a)
+# Base.conj(a::AbstractScalarField) = ScalarOp(:conj, a)
 
-Base.abs(a::AbstractField) = FieldOp(:abs, a)
-Base.exp(a::AbstractField) = FieldOp(:exp, a)
-Base.sin(a::AbstractField) = FieldOp(:sin, a)
-Base.cos(a::AbstractField) = FieldOp(:cos, a)
+# Base.abs(a::AbstractScalarField) = ScalarOp(:abs, a)
+# Base.exp(a::AbstractScalarField) = ScalarOp(:exp, a)
+# Base.sin(a::AbstractScalarField) = ScalarOp(:sin, a)
+# Base.cos(a::AbstractScalarField) = ScalarOp(:cos, a)
 
-Base.:(+)(a::AbstractField, b::AbstractField) = FieldOp(:+, a, b)
-Base.:(+)(a::Scalar, b::AbstractField)  = FieldOp(:+, a, b)
-Base.:(+)(a::AbstractField, b::Scalar)  = FieldOp(:+, a, b)
+# Base.:(+)( a::AbstractScalarField, b::AbstractScalarField) = ScalarOp(:+, a, b)
+# Base.:(+)( a::AbstractScalar     , b::AbstractScalarField) = ScalarOp(:+, a, b)
+# Base.:(+)( a::AbstractScalarField, b::AbstractScalar     ) = ScalarOp(:+, a, b)
 
-Base.:(-)(a::AbstractField, b::AbstractField) = FieldOp(:-, a, b)
-Base.:(-)(a::Scalar, b::AbstractField)  = FieldOp(:-, a, b)
-Base.:(-)(a::AbstractField, b::Scalar)  = FieldOp(:-, a, b)
+# Base.:(-)( a::AbstractScalarField, b::AbstractScalarField) = ScalarOp(:-, a, b)
+# Base.:(-)( a::AbstractScalar     , b::AbstractScalarField) = ScalarOp(:-, a, b)
+# Base.:(-)( a::AbstractScalarField, b::AbstractScalar     ) = ScalarOp(:-, a, b)
 
-Base.:(*)(a::AbstractField, b::AbstractField) = FieldOp(:*, a, b)
-Base.:(*)(a::Scalar, b::AbstractField)  = FieldOp(:*, a, b)
-Base.:(*)(a::AbstractField, b::Scalar)  = FieldOp(:*, a, b)
+# Base.:(*)( a::AbstractScalarField, b::AbstractScalarField) = ScalarOp(:*, a, b)
+# Base.:(*)( a::AbstractScalar     , b::AbstractScalarField) = ScalarOp(:*, a, b)
+# Base.:(*)( a::AbstractScalarField, b::AbstractScalar     ) = ScalarOp(:*, a, b)
 
-Base.:(/)(a::AbstractField, b::AbstractField) = FieldOp(:/, a, b)
-Base.:(/)(a::Scalar, b::AbstractField)  = FieldOp(:/, a, b)
-Base.:(/)(a::AbstractField, b::Scalar)  = FieldOp(:/, a, b)
+# Base.:(/)( a::AbstractScalarField, b::AbstractScalarField) = ScalarOp(:/, a, b)
+# Base.:(/)( a::AbstractScalar     , b::AbstractScalarField) = ScalarOp(:/, a, b)
+# Base.:(/)( a::AbstractScalarField, b::AbstractScalar     ) = ScalarOp(:/, a, b)
 
-Base.:(^)(a::AbstractField, b::AbstractField) = FieldOp(:^, a, b)
-Base.:(^)(a::Scalar, b::AbstractField)  = FieldOp(:^, a, b)
-Base.:(^)(a::AbstractField, b::Scalar)  = FieldOp(:^, a, b)
+# Base.:(^)( a::AbstractScalarField, b::AbstractScalarField) = ScalarOp(:^, a, b)
+# Base.:(^)( a::AbstractScalar     , b::AbstractScalarField) = ScalarOp(:^, a, b)
+# Base.:(^)( a::AbstractScalarField, b::AbstractScalar     ) = ScalarOp(:^, a, b)
 
-Base.:(<)(a::AbstractField, b::AbstractField) = FieldOp(:(<), [a, b])
-Base.:(<)(a::Scalar, b::AbstractField)  = FieldOp(:(<),  a, b)
-Base.:(<)(a::AbstractField, b::Scalar)  = FieldOp(:(<),  a, b)
+# Base.:(<)( a::AbstractScalarField, b::AbstractScalarField) = ScalarOp(:(<), a, b)
+# Base.:(<)( a::AbstractScalar     , b::AbstractScalarField) = ScalarOp(:(<), a, b)
+# Base.:(<)( a::AbstractScalarField, b::AbstractScalar     ) = ScalarOp(:(<), a, b)
 
-Base.:(<=)(a::AbstractField, b::AbstractField) = FieldOp(:(<=), a, b)
-Base.:(<=)(a::Scalar, b::AbstractField) = FieldOp(:(<=), a, b)
-Base.:(<=)(a::AbstractField, b::Scalar) = FieldOp(:(<=), a, b)
+# Base.:(<=)(a::AbstractScalarField, b::AbstractScalarField) = ScalarOp(:(<=), a, b)
+# Base.:(<=)(a::AbstractScalar     , b::AbstractScalarField) = ScalarOp(:(<=), a, b)
+# Base.:(<=)(a::AbstractScalarField, b::AbstractScalar     ) = ScalarOp(:(<=), a, b)
 
-Base.:(>)(a::AbstractField, b::AbstractField) = FieldOp(:(>), a, b)
-Base.:(>)(a::Scalar, b::AbstractField)  = FieldOp(:(>),  a, b)
-Base.:(>)(a::AbstractField, b::Scalar)  = FieldOp(:(>),  a, b)
+# Base.:(>)( a::AbstractScalarField, b::AbstractScalarField) = ScalarOp(:(>), a, b)
+# Base.:(>)( a::AbstractScalar     , b::AbstractScalarField) = ScalarOp(:(>), a, b)
+# Base.:(>)( a::AbstractScalarField, b::AbstractScalar     ) = ScalarOp(:(>), a, b)
 
-Base.:(>=)(a::AbstractField, b::AbstractField) = FieldOp(:(>=), a, b)
-Base.:(>=)(a::Scalar, b::AbstractField) = FieldOp(:(>=), a, b)
-Base.:(>=)(a::AbstractField, b::Scalar) = FieldOp(:(>=), a, b)
+# Base.:(>=)(a::AbstractScalarField, b::AbstractScalarField) = ScalarOp(:(>=), a, b)
+# Base.:(>=)(a::AbstractScalar     , b::AbstractScalarField) = ScalarOp(:(>=), a, b)
+# Base.:(>=)(a::AbstractScalarField, b::AbstractScalar     ) = ScalarOp(:(>=), a, b)
 
-Base.:(==)(a::AbstractField, b::AbstractField) = FieldOp(:(==), a, b)
-Base.:(==)(a::Scalar, b::AbstractField) = FieldOp(:(==), a, b)
-Base.:(==)(a::AbstractField, b::Scalar) = FieldOp(:(==), a, b)
+# Base.:(==)(a::AbstractScalarField, b::AbstractScalarField) = ScalarOp(:(==), a, b)
+# Base.:(==)(a::AbstractScalar     , b::AbstractScalarField) = ScalarOp(:(==), a, b)
+# Base.:(==)(a::AbstractScalarField, b::AbstractScalar     ) = ScalarOp(:(==), a, b)
 
-# dot(a::AbstractField, b::AbstractField) = interpolate(a) * interpolate(b)
+# dot(a::AbstractScalarField, b::AbstractScalarField) = interpolate(a) * interpolate(b)
 
 # module StaggeredKernels

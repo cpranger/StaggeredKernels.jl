@@ -34,21 +34,22 @@ Tensor((; zip(keys(x.cpnts), diag(getproperty(x, c), getproperty.(f, c), offset)
 
 include("./tensor_symmetry.jl")
 
-Base.imag(a::AbstractTensor) = TensorOp(:imag, a)
-Base.real(a::AbstractTensor) = TensorOp(:real, a)
- Base.abs(a::AbstractTensor) = TensorOp(:abs,  a)
-Base.sqrt(a::AbstractTensor) = TensorOp(:sqrt, a)
+# Base.imag(a::AbstractTensor) = TensorOp(:imag, a)
+# Base.real(a::AbstractTensor) = TensorOp(:real, a)
+#  Base.abs(a::AbstractTensor) = TensorOp(:abs,  a)
+# Base.conj(a::AbstractTensor) = TensorOp(:conj, a)
+# Base.sqrt(a::AbstractTensor) = TensorOp(:sqrt, a)
 
-Base.:*(a::AbstractTensor, b::AbstractTensor) =  TensorProd(a,   b)
-Base.:*(a::AbstractTensor, b::Scalar        ) =  TensorOp(:*, a, b)
-Base.:*(a::Scalar        , b::AbstractTensor) =  TensorOp(:*, a, b)
-Base.:/(a::AbstractTensor, b::Scalar        ) =  TensorOp(:/, a, b)
-Base.:/(a::Scalar        , b::AbstractTensor) =  TensorOp(:/, a, b)
-Base.:+(a::AbstractTensor, b::AbstractTensor) =  TensorOp(:+, a, b)
-Base.:-(a::AbstractTensor, b::AbstractTensor) =  TensorOp(:-, a, b)
-Base.:-(a::AbstractTensor)                    =  TensorOp(:-, a)
+# Base.:*(a::AbstractTensor, b::AbstractTensor) =  TensorProd(a,   b)
+# Base.:*(a::AbstractTensor, b::Scalar        ) =  TensorOp(:*, a, b)
+# Base.:*(a::Scalar        , b::AbstractTensor) =  TensorOp(:*, a, b)
+# Base.:/(a::AbstractTensor, b::Scalar        ) =  TensorOp(:/, a, b)
+# Base.:/(a::Scalar        , b::AbstractTensor) =  TensorOp(:/, a, b)
+# Base.:+(a::AbstractTensor, b::AbstractTensor) =  TensorOp(:+, a, b)
+# Base.:-(a::AbstractTensor, b::AbstractTensor) =  TensorOp(:-, a, b)
+# Base.:-(a::AbstractTensor)                    =  TensorOp(:-, a)
 
-Base.:/(a::AbstractTensor, b::Tensor{Unsymmetric{1}}) = Vector((x = a.x/b.x, y = a.y/b.y, z = a.z/b.z,))
+# Base.:/(a::AbstractTensor, b::Tensor{Unsymmetric{1}}) = Vector((x = a.x/b.x, y = a.y/b.y, z = a.z/b.z,))
 
 (tensor_pow(arg::AbstractTensor, ::Val{1})        ) = arg
 (tensor_pow(arg::AbstractTensor, ::Val{P}) where P) = arg * tensor_pow(arg, Val(P-1))
@@ -129,8 +130,8 @@ function has_component(::Type{NamedTuple{N,T}}, c::Val{C}) where {N, T, C}
 	return C in N
 end
 
-(get_component(p::T,      c::Val) where {T <: Scalar}) = p
-(has_component(::Type{T}, c::Val) where {T <: Scalar}) = true
+(get_component(p::T,      c::Val) where {T <: AbstractScalar}) = p
+(has_component(::Type{T}, c::Val) where {T <: AbstractScalar}) = true
 
 @generated function get_component(p::TensorExpr{T}, c::Val{C}) where {T <: Tuple, C}
 	heads = expr_heads(fieldtypes(T)...)
@@ -222,6 +223,15 @@ function has_component(::Type{TensorProd{T1,T2}}, c::Val{C}) where {T1, T2, C}
 	end
 	
 	return false
+end
+
+@generated function get_component(p::T, c::Val{C}) where {T <: Tuple, C}
+	args  = [:(get_component(p[$i], c)) for i in 1:length(fieldtypes(T))]
+	return Expr(:tuple, args...)
+end
+
+function has_component(::Type{T}, c::Val) where {T <: Tuple}
+	return any([has_component(t, c) for t in fieldtypes(T)])
 end
 
 

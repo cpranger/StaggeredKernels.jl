@@ -6,16 +6,17 @@ module StaggeredKernels
 # using  ..ParallelStencil
 # using    LinearAlgebra
 
-export   assign!, reduce, collect_stags, stag_subset, dot
+export   assign!, reduce, collect_stags, stag_subset, dot, l2
 
 # internals
 include("./include/scalar.jl")
 include("./include/tensor.jl")
 include("./include/linearization.jl")
 
-@generated function assign_at!(lhs::L, rhs::R, inds, bounds) where {L <: NamedTuple, R <: NamedTuple}
-	keys = intersect(lhs.parameters[1], rhs.parameters[1])
-	exprs = [:(assign_at!(lhs.$k, rhs.$k, inds, bounds)) for k in keys]
+@generated function assign_at!(lhs::L, rhs::R, inds, bounds) where {L <: Tuple, R <: Tuple}
+	(ll, lr) = (length(lhs.parameters), length(rhs.parameters))
+	ll == lr || error("length(lhs) != length(lhs)")
+	exprs = [:(assign_at!(lhs[$i], rhs[$i], inds, bounds)) for i in 1:ll]
 	return Expr(:block, exprs...)
 end
 
@@ -46,17 +47,6 @@ function assign!(lhs, rhs)
 	end
 end
 
-function assign!(lhs, rhs::Tuple{R, BC}) where {R, BC}
-	n = gridsize(lhs)
-	o = n .- n .+ 1
-	bounds   = (o, n)
-	expr = rhs[1]
-	bcs = parse_bcs(rhs[2])
-	for i in CartesianIndices <| map((:), bounds...)
-		assign_at!(lhs, (expr, bcs), Tuple(i), bounds)
-	end
-end
-
 @generated function reduce_at!(result::Ref{T}, op, field::F, inds, bounds) where {T, F <: NamedTuple}
 	keys  = field.parameters[1]
 	exprs = [:(reduce_at!(result, op, field.$k, inds, bounds)) for k in keys]
@@ -67,12 +57,6 @@ end
 	exprs = [:(reduce_at!(result, op, f1.$k, f2.$k, inds, bounds)) for k in N]
 	return Expr(:block, exprs...)
 end
-
-# @generated function reduce_at!(result::Ref{T}, op, field::Tuple{F,BC}, inds, bounds) where {T, F <: NamedTuple, BC <: NamedTuple}
-# 	keys  = F.parameters[1]
-# 	exprs = [:(reduce_at!(result, op, (field[1].$k, field[2].$k), inds, bounds)) for k in keys]
-# 	return Expr(:block, exprs...)
-# end
 
 function reduce(op, field; init = 0.)
 	n = gridsize(field)
@@ -95,12 +79,6 @@ function reduce(op, field1, field2; init = 0.)
 	end
 	return result[]
 end
-
-dot(f1, f2) = reduce((r, a, b) -> r + a*b, f1, f2)
-
-Base.min(   f::Union{AbstractField,AbstractTensor}) = reduce(min, f; init =  Inf64)
-Base.max(   f::Union{AbstractField,AbstractTensor}) = reduce(max, f; init = -Inf64)
-Base.minmax(f::Union{AbstractField,AbstractTensor}) = reduce(((mi, ma), x) -> (min(mi, x), max(ma, x)), f; init = (Inf64, -Inf64))
 
 
 collect_stags(stags::NamedTuple) = Tuple <| union(values(stags)...)
