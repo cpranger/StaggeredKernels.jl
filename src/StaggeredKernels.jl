@@ -2,10 +2,6 @@ module StaggeredKernels
 
 <|(f, x) = f(x)
 
-# import ..Float
-# using  ..ParallelStencil
-# using    LinearAlgebra
-
 export   assign!, reduce, collect_stags, stag_subset, dot, l2
 
 # internals

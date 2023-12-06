@@ -34,23 +34,6 @@ Tensor((; zip(keys(x.cpnts), diag(getproperty(x, c), getproperty.(f, c), offset)
 
 include("./tensor_symmetry.jl")
 
-# Base.imag(a::AbstractTensor) = TensorOp(:imag, a)
-# Base.real(a::AbstractTensor) = TensorOp(:real, a)
-#  Base.abs(a::AbstractTensor) = TensorOp(:abs,  a)
-# Base.conj(a::AbstractTensor) = TensorOp(:conj, a)
-# Base.sqrt(a::AbstractTensor) = TensorOp(:sqrt, a)
-
-# Base.:*(a::AbstractTensor, b::AbstractTensor) =  TensorProd(a,   b)
-# Base.:*(a::AbstractTensor, b::Scalar        ) =  TensorOp(:*, a, b)
-# Base.:*(a::Scalar        , b::AbstractTensor) =  TensorOp(:*, a, b)
-# Base.:/(a::AbstractTensor, b::Scalar        ) =  TensorOp(:/, a, b)
-# Base.:/(a::Scalar        , b::AbstractTensor) =  TensorOp(:/, a, b)
-# Base.:+(a::AbstractTensor, b::AbstractTensor) =  TensorOp(:+, a, b)
-# Base.:-(a::AbstractTensor, b::AbstractTensor) =  TensorOp(:-, a, b)
-# Base.:-(a::AbstractTensor)                    =  TensorOp(:-, a)
-
-# Base.:/(a::AbstractTensor, b::Tensor{Unsymmetric{1}}) = Vector((x = a.x/b.x, y = a.y/b.y, z = a.z/b.z,))
-
 (tensor_pow(arg::AbstractTensor, ::Val{1})        ) = arg
 (tensor_pow(arg::AbstractTensor, ::Val{P}) where P) = arg * tensor_pow(arg, Val(P-1))
 
@@ -61,7 +44,6 @@ struct TensorAdjoint{T <: AbstractTensor} <: AbstractTensor
 end
 
 adjoint(t::AbstractTensor) = TensorAdjoint(t)
-
 
 include("./tensor_utils.jl")
 
