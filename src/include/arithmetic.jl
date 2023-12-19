@@ -133,10 +133,21 @@ Base.:(==)(a::AbstractScalar     , b::AbstractScalarField) = ScalarOp(:(==), a, 
 Base.:(==)(a::AbstractScalarField, b::AbstractScalar     ) = ScalarOp(:(==), a, b)
 
 dot(f1, f2)  =  reduce((r, a, b) -> r + a*b, f1, f2)
-l2(f) = sqrt <| reduce((r, a) -> r + a^2, f)
+dot(f1::Tuple, f2::Tuple) = sum <| map(dot, f1, f2)
+l2(f) = sqrt <| dot(f, f)
+l2(ff::Tuple) = sqrt <| sum <| map(f -> dot(f, f), ff)
+
+diag(xx::Tuple, ff::Tuple) = map((x, f) -> diag(x, f), xx, ff)
+diag(xx::Tuple, ff::Tuple, offset) = map((x, f) -> diag(x, f, offset), xx, ff)
 
 Base.min(   f::Union{AbstractScalarField, AbstractTensor}) = reduce(min, f; init =  Inf64)
 Base.max(   f::Union{AbstractScalarField, AbstractTensor}) = reduce(max, f; init = -Inf64)
 Base.minmax(f::Union{AbstractScalarField, AbstractTensor}) = reduce(((mi, ma), x) -> (min(mi, x), max(ma, x)), f; init = (Inf64, -Inf64))
+
+Base.min(   ff::Tuple) = min(map(min, ff)...)
+Base.max(   ff::Tuple) = max(map(max, ff)...)
+Base.minmax(ff::Tuple) = (let mm = map(minmax, ff)
+    (min(map(first, mm)...), max(map(last, mm)...))
+end)
 
 # module StaggeredKernels
