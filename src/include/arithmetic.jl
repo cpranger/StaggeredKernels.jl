@@ -54,6 +54,16 @@ const AbstractObject    = Union{AbstractScalar, AbstractTensor}
  Base.:cos(a::Tuple)                = cos.(a)
  Base.:cos(a::NamedTuple)           = map(a -> cos(a), a)
 
+(Base.:sqrt(a::BC{D}) where D)       = BC{D}(sqrt(a.expr))
+ Base.:sqrt(a::AbstractScalarField)  = ScalarOp(:sqrt, a)
+ Base.:sqrt(a::Tuple)                = sqrt.(a)
+ Base.:sqrt(a::NamedTuple)           = map(a -> sqrt(a), a)
+
+(Base.:cbrt(a::BC{D}) where D)       = BC{D}(cbrt(a.expr))
+ Base.:cbrt(a::AbstractScalarField)  = ScalarOp(:cbrt, a)
+ Base.:cbrt(a::Tuple)                = cbrt.(a)
+ Base.:cbrt(a::NamedTuple)           = map(a -> cbrt(a), a)
+
 (Base.:+(a::BC{D},               b::BC{D}              ) where D)  =  BC{D}(a.expr + b.expr)
 (Base.:+(a::BC{D},               b::AbstractScalar     ) where D)  =  BC{D}(a.expr + b     )
 (Base.:+(a::AbstractScalar,      b::BC{D}              ) where D)  =  BC{D}(a      + b.expr)
@@ -140,8 +150,11 @@ l2(ff::Tuple) = sqrt <| sum <| map(f -> dot(f, f), ff)
 diag(xx::Tuple, ff::Tuple) = map((x, f) -> diag(x, f), xx, ff)
 diag(xx::Tuple, ff::Tuple, offset) = map((x, f) -> diag(x, f, offset), xx, ff)
 
+export absmax
+
 Base.min(   f::Union{AbstractScalarField, AbstractTensor}) = reduce(min, f; init =  Inf64)
 Base.max(   f::Union{AbstractScalarField, AbstractTensor}) = reduce(max, f; init = -Inf64)
+     absmax(f::Union{AbstractScalarField, AbstractTensor}) = reduce((a, b) -> max(a, abs(b)), f; init = 0.)
 Base.minmax(f::Union{AbstractScalarField, AbstractTensor}) = reduce(((mi, ma), x) -> (min(mi, x), max(ma, x)), f; init = (Inf64, -Inf64))
 
 Base.min(   ff::Tuple) = min(map(min, ff)...)

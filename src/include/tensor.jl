@@ -1,6 +1,6 @@
 # module StaggeredKernels
 
-export Tensor, AbstractTensor, Vector, L2, J1, J2, J3, I1, I2, I3, tr, dev, divergence, grad, symgrad, curl, diag, TensorOp
+export Tensor, AbstractTensor, Vector, L2, J1, J2, J3, I1, I2, I3, tr, dev, divergence, grad, grad2, symgrad, curl, diag, TensorOp
 
 abstract type AbstractTensor end
 
@@ -174,8 +174,8 @@ end
 		cb = Val <| encode_component <| (ic..., ib...)
 		
 		if has_component(T1, ca) && has_component(T2, cb)
-			aa = :(#=interpolate <| =#get_component(p.t1, $ca))
-			bb = :(#=interpolate <| =#get_component(p.t2, $cb))
+			aa = :(interpolate <| get_component(p.t1, $ca))
+			bb = :(interpolate <| get_component(p.t2, $cb))
 			result = Expr(:call, :+, result, Expr(:call, :*, aa, bb))
 		end
 	end
@@ -264,9 +264,9 @@ I1(arg) = (1/1) * (J1(arg)^1)
 I2(arg) = (1/2) * (J1(arg)^2 - 1*J2(arg))
 I3(arg) = (1/6) * (J1(arg)^3 - 3*J2(arg)*J1(arg) + 2*J3(arg))
 
-J1(arg) = #=interpolate(=#tr(arg)#=)=#
-J2(arg) = tr(arg^2)
-J3(arg) = tr(arg^3)
+J1(arg) = interpolate(tr(arg  ))
+J2(arg) =             tr(arg^2)
+J3(arg) =             tr(arg^3)
 
 tr(arg) = arg.xx + arg.yy + arg.zz
 
@@ -306,6 +306,30 @@ function grad(t::AbstractTensor)
 		zy = D(t.z, :y),
 		zz = D(t.z, :z)
 	), Unsymmetric{2})
+end
+
+function grad2(t::AbstractScalar)
+	return Tensor((
+		xx = D(t, :x)*D(t, :x),
+		xy = D(t, :y)*D(t, :x),
+		yy = D(t, :y)*D(t, :y),
+		xz = D(t, :z)*D(t, :x),
+		yz = D(t, :z)*D(t, :y),
+		zz = D(t, :z)*D(t, :z)
+	), Symmetric)
+end
+
+function grad2(t::AbstractTensor)
+	rank = tensor_order(t)
+	rank == 1 || error("gradient of rank $rank tensor not supported.")
+	return Tensor((
+		xx = D(t.x, :x)*D(t.x, :x),
+		xy = D(t.x, :y)*D(t.y, :x),
+		yy = D(t.y, :y)*D(t.y, :y),
+		xz = D(t.x, :z)*D(t.z, :x),
+		yz = D(t.y, :z)*D(t.z, :y),
+		zz = D(t.z, :z)*D(t.z, :z)
+	), Symmetric)
 end
 
 function symgrad(t::AbstractTensor)

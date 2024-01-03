@@ -16,6 +16,16 @@ include("./include/arithmetic.jl")
 	return Expr(:block, exprs...)
 end
 
+@generated function assign_at!(lhs::NamedTuple{N,L}, rhs::R, inds, bounds) where {N, L <: Tuple, R <: Tuple}
+	exprs = [:(assign_at!(lhs[$i], rhs[$i], inds, bounds)) for i in eachindex(N)]
+	return Expr(:block, exprs...)
+end
+
+@generated function assign_at!(lhs::NamedTuple{N,L}, rhs::NamedTuple{N,R}, inds, bounds) where {N, L <: Tuple, R <: Tuple}
+	exprs = [:(assign_at!(lhs.$n, rhs.$n, inds, bounds)) for n in N]
+	return Expr(:block, exprs...)
+end
+
 @generated function assign_at!(lhs::L, rhs::Tuple{R, BC}, inds, bounds) where {L <: NamedTuple, R <: NamedTuple, BC <: NamedTuple}
 	keys = intersect(L.parameters[1], R.parameters[1])
 	exprs = [:(assign_at!(lhs.$k, (rhs[1].$k, rhs[2].$k), inds, bounds)) for k in keys]
