@@ -6,7 +6,7 @@ export Diagonal, Orthotropic
 export Symmetric, Anisotropic
 export Antisymmetric, Unsymmetric
 
-struct Ones{O}            <: TensorSymmetry{O}; end
+struct Ones               <: TensorSymmetry{2}; end
 struct Identity           <: TensorSymmetry{2}; end
 struct MajorIdentity      <: TensorSymmetry{4}; end
 struct MinorIdentity      <: TensorSymmetry{4}; end
