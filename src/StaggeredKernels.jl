@@ -2,7 +2,7 @@ module StaggeredKernels
 
 <|(f, x) = f(x)
 
-export   assign!, reduce, collect_stags, stag_subset, dot, l2
+export   assign!, reduce, collect_stags, stag_subset, dot, l2, prepare_assignment
 
 # internals
 include("./include/scalar.jl")
@@ -11,11 +11,12 @@ include("./include/arithmetic.jl")
 
 @generated function assign_at!(lhs::L, rhs::R, inds, bounds) where {L <: Tuple, R <: Tuple}
 	(ll, lr) = (length(lhs.parameters), length(rhs.parameters))
-	ll == lr || error("length(lhs) != length(lhs)")
+	ll == lr || error("length(lhs) != length(rhs)")
 	exprs = [:(assign_at!(lhs[$i], rhs[$i], inds, bounds)) for i in 1:ll]
 	return Expr(:block, exprs...)
 end
 
+# TODO: IDENTIFY WHERE NEEDED AND DELETE IF POSSIBLE
 @generated function assign_at!(lhs::NamedTuple{N,L}, rhs::R, inds, bounds) where {N, L <: Tuple, R <: Tuple}
 	exprs = [:(assign_at!(lhs[$i], rhs[$i], inds, bounds)) for i in eachindex(N)]
 	return Expr(:block, exprs...)
@@ -26,6 +27,7 @@ end
 	return Expr(:block, exprs...)
 end
 
+# TODO: IDENTIFY WHERE NEEDED AND DELETE IF POSSIBLE
 @generated function assign_at!(lhs::L, rhs::Tuple{R, BC}, inds, bounds) where {L <: NamedTuple, R <: NamedTuple, BC <: NamedTuple}
 	keys = intersect(L.parameters[1], R.parameters[1])
 	exprs = [:(assign_at!(lhs.$k, (rhs[1].$k, rhs[2].$k), inds, bounds)) for k in keys]
@@ -44,12 +46,22 @@ function gridsize(f::Tuple)
 	return nn[1]
 end
 
+(prepare_assignment(lhs::L, rhs::R) where {L <: Tuple, R <: Tuple}) = 
+	map(prepare_assignment, lhs, rhs)
+
+(prepare_assignment(lhs::NamedTuple{N,L}, rhs::NamedTuple{N,R}) where {N, L <: Tuple, R <: Tuple}) = 
+	map(prepare_assignment, lhs, rhs)
+
+# (prepare_assignment(lhs::L, rhs::Tuple{R, BC}) where {L <: NamedTuple, R <: NamedTuple, BC <: NamedTuple}) = 
+# 	map((l, r, bc) -> prepare_assignment(l, (r, bc)), lhs, rhs[1], rhs[2])
+
 function assign!(lhs, rhs)
 	n = gridsize(lhs)
 	o = n .- n .+ 1
-	bounds   = (o, n)
+	bounds = (o, n)
+	prepared_rhs = prepare_assignment(lhs, rhs)
 	for i in CartesianIndices <| map((:), bounds...)
-		assign_at!(lhs, rhs, Tuple(i), bounds)
+		assign_at!(lhs, prepared_rhs, Tuple(i), bounds)
 	end
 end
 
@@ -75,7 +87,7 @@ function reduce(op, field; init = 0.)
 	return result[]
 end
 
-function reduce(op, field1, field2; init = 0.)
+function reduce(op::Op, field1::F1, field2::F2; init::R = 0.) where {Op, F1, F2, R}
 	n = gridsize((field1, field2))
 	o = n .- n .+ 1
 	bounds   = (o, n)

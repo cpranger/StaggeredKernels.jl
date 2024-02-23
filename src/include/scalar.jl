@@ -1,6 +1,6 @@
 # module StaggeredKernels
 
-export If, A, D, BD, FD, BA, FA, interpolate, fieldgen, AbstractScalarField, Field, BC, diag#, assign_at, reduce_at
+export If, A, D, BD, FD, BA, FA, interpolate, fieldgen, AbstractScalarField, Field, FieldVal, BC, diag#, assign_at, reduce_at
 
 abstract type AbstractScalarField end
 
@@ -14,6 +14,10 @@ end
 	
 (Field{SS}(data::T) where {SS, T <: AbstractArray}) =
     Field{SS, T}(data)
+
+struct FieldVal{R <: Ref} <: AbstractScalarField
+	ref::R
+end
 
 # TODO: TEST DEEP VS SHALLOW COPY WHEN CONSTRUCTING
 struct FieldExpr{T <: Tuple} <: AbstractScalarField
@@ -42,6 +46,13 @@ FD(x::Number, ::Symbol) = 0
  A(x::Number, ::Symbol) = x
 BA(x::Number, ::Symbol) = x
 FA(x::Number, ::Symbol) = x
+
+ D(x::FieldVal, ::Symbol) = 0
+BD(x::FieldVal, ::Symbol) = 0
+FD(x::FieldVal, ::Symbol) = 0
+ A(x::FieldVal, ::Symbol) = x
+BA(x::FieldVal, ::Symbol) = x
+FA(x::FieldVal, ::Symbol) = x
 
  D(x, d::Symbol) =  D(x, decode_component(d)[1])
 BD(x, d::Symbol) = BD(x, decode_component(d)[1])
@@ -120,6 +131,7 @@ my_ndims(f::FieldShft)  = my_ndims(f.shiftee)
 my_ndims(f::FieldIntp)  = my_ndims(f.interpolant)
 my_ndims(f::FieldGen)   = first(methods(f.func)).nargs
 (my_ndims(f::NTuple{M,NTuple{N}}) where {M, N}) = N
+my_ndims(f::FieldVal)   = 0
 my_ndims(f::Any)        = 0
 
 (stags(::Type{Field{St, T}})   where {St, T}) = St
@@ -143,18 +155,18 @@ function stagindex(ss, s)
 	return i
 end
 
-getindex(x::Number, ::Val, inds, bounds) = x
+@inline getindex(x::Number, ::Val, inds, bounds) = x
 
-Base.getindex( x::Field,      inds...) =  x.data[inds...]
-Base.setindex!(x::Field, val, inds...) = (x.data[inds...] = val)
+@inline Base.getindex( x::Field,      inds...) =  x.data[inds...]
+@inline Base.setindex!(x::Field, val, inds...) = (x.data[inds...] = val)
 
-@generated function getindex(x::Field{SS}, ::Val{S}, inds, bounds) where {SS, S}
+@inline @generated function getindex(x::Field{SS}, ::Val{S}, inds, bounds) where {SS, S}
 	f = stagindex(SS, mod.(S, 2))
 	offset = stencil_offset(S)
 	return :(x[$f, min.(max.(bounds[1], inds .+ $offset), bounds[2] .+ $(mod.(S, 2) .- 1))...]) # This imposes automatic Neumann conditions whenever needed.
 end
 
-@generated function setindex!(x::Field{SS}, val, ::Val{S}, inds, bounds) where {SS, S}
+@inline @generated function setindex!(x::Field{SS}, val, ::Val{S}, inds, bounds) where {SS, S}
 	f = stagindex(SS, mod.(S, 2))
 	offset = stencil_offset(S)
 	return :(x[$f, min.(max.(bounds[1], inds .+ $offset), bounds[2] .+ $(mod.(S, 2) .- 1))...] = val) # This imposes automatic Neumann conditions whenever needed.
@@ -163,7 +175,7 @@ end
 (expr_heads(args...)) = []
 (expr_heads(::Type{Val{S}}, args...) where S) = [S, expr_heads(args...)...]
 
-@generated function getindex(x::FieldExpr{T}, s::Val{S}, inds, bounds) where {T <: Tuple, S}
+@inline @generated function getindex(x::FieldExpr{T}, s::Val{S}, inds, bounds) where {T <: Tuple, S}
 	heads = expr_heads(fieldtypes(T)...)
 	first = length(heads)+1
 	last  = length(fieldtypes(T))
@@ -171,19 +183,23 @@ end
 	return Expr(heads..., args...)
 end
 
-(getindex(x::FieldShft{S1,T}, ::Val{S2}, inds, bounds) where {T, S1, S2}) = 
+@inline Base.getindex( x::FieldVal) = x.ref[]
+@inline Base.setindex!(x::FieldVal, val) = Base.setindex!(x.ref, val)
+@inline (getindex( x::FieldVal{R}, s::Val{S}, inds, bounds) where {R <: Ref, S}) = x.ref[]
+
+@inline (getindex(x::FieldShft{S1,T}, ::Val{S2}, inds, bounds) where {T, S1, S2}) = 
 	getindex(x.shiftee, Val(S1 .+ S2), inds, bounds)
 
-(getindex(x::FieldGen, s::Val{S}, inds, bounds) where S) = x.func((inds .+ S./2 .- 1)...)
+@inline (getindex(x::FieldGen, s::Val{S}, inds, bounds) where S) = x.func((inds .+ S./2 .- 1)...)
 
-@generated function getindex(x::FieldIntp{A}, ::Val{S}, inds, bounds) where {A, S}
+@inline @generated function getindex(x::FieldIntp{A}, ::Val{S}, inds, bounds) where {A, S}
 	sten = combinations(map((f, t) -> mod(f,2) == mod(t,2) ? [t] : [t-1,t+1], stags(A)[1], S)...)
 	size = length(sten)
 	args = [:(getindex(x.interpolant, $(Val(s)), inds, bounds)) for s in sten]
 	return Expr(:call, :/, Expr(:call, :+, args...), size)
 end
 
-@generated function getindex(diag::FieldDiag{F, SS, O}, ::Val{S}, inds, bounds) where {F, SS, O, S}
+@inline @generated function getindex(diag::FieldDiag{F, SS, O}, ::Val{S}, inds, bounds) where {F, SS, O, S}
 	f = stagindex(SS, mod.(S, 2))
 	s = (Val(.-mod.(S, 2)))
 	return :(
@@ -194,24 +210,24 @@ end
 	)
 end
 
-(getindex(f::Tuple{F, BCs}, s::Val{S}, inds, bounds) where {F, BCs <: Tuple, S}) = 
-	getindex((f[2]..., f[1]), s, inds, bounds)
+@inline (getindex(f::Tuple{F, BCs}, s::Val{S}, inds, bounds) where {F, BCs <: Tuple, S}) = 
+	getindex_impl(s, inds, bounds, f...)
 
-getindex(f::Tuple{AbstractScalar}, s, inds, bounds) = getindex(f[1], s, inds, bounds)
+@inline getindex_impl(s::Val, inds, bounds, f::AbstractScalar) = getindex(f, s, inds, bounds)
+@inline getindex_impl(s::Val, inds, bounds, f::AbstractScalar, args::Tuple) = getindex_impl(s, inds, bounds, args..., f)
 
-@generated function getindex(args::Tuple{BC{D}, Union{AbstractScalar, BC}, Vararg{Union{AbstractScalar, BC}}}, s::Val{S}, inds, bounds) where {D, S}
+@inline @generated function getindex_impl(s::Val{S}, inds, bounds, arg::BC{D}, args...) where {D, S}
 	d = abs(D)
 	f = mod(-sign(D), 3) # (-n, +m) -> (1, 2) ∀ n, m ∈ N+
 	o = mod.(S, 2) .- 1
 	return :(
 		inds[$d] == (bounds[$f][$d] + $(Int(f == 2) * o[d])) ? (
-			#=bounds[1][3-$d] < inds[3-$d] < (bounds[2][3-$d] + $o[3-$d]) ?=#
-				getindex(args[1].expr, s, inds, bounds) #=: 0=#
-			) : getindex(args[2:end],  s, inds, bounds)
+				getindex(arg.expr, s, inds, bounds)
+			) : getindex_impl(s, inds, bounds, args...)
 	)
 end
 
-@generated function reduce_at!(result::Ref{T}, op, f::Field{S}, inds, bounds) where {T, S}
+@inline @generated function reduce_at!(result::Ref{T}, op, f::Field{S}, inds, bounds) where {T, S}
 	return Expr(
 		:block,
 		[Expr(
@@ -225,14 +241,14 @@ end
 	)
 end
 
-reduce_at!(result::Ref, op, f1::Field,               f2::Field,               inds, bounds) =
+@inline (reduce_at!(result::Ref{R}, op::OP, f1::F1, f2::F2, inds, bounds) where {R, OP, F1 <: Field, F2 <: Field}) =
 	reduce_at_impl_!(result, op, f2, f1, inds, bounds)
-reduce_at!(result::Ref, op, f1::AbstractScalarField, f2::Field,               inds, bounds) =
+@inline (reduce_at!(result::Ref{R}, op::OP, f1::F1, f2::F2, inds, bounds) where {R, OP, F1 <: AbstractScalarField, F2 <: Field}) =
 	reduce_at_impl_!(result, op, f2, f1, inds, bounds)
-reduce_at!(result::Ref, op, f1::Field,               f2::AbstractScalarField, inds, bounds) =
+@inline (reduce_at!(result::Ref{R}, op::OP, f1::F1, f2::F2, inds, bounds) where {R, OP, F1 <: Field, F2 <: AbstractScalarField}) =
 	reduce_at_impl_!(result, op, f1, f2, inds, bounds)
 
-@generated function reduce_at_impl_!(result::Ref, op, f1::Field{S}, f2::AbstractScalarField, inds, bounds) where S
+@inline @generated function reduce_at_impl_!(result::Ref{R}, op, f1::Field{S}, f2::AbstractScalarField, inds, bounds) where {R, S}
 	return Expr(
 		:block,
 		[Expr(
@@ -247,7 +263,7 @@ reduce_at!(result::Ref, op, f1::Field,               f2::AbstractScalarField, in
 	)
 end
 
-@generated function assign_at!(lhs::Field{S}, rhs, inds, bounds) where S
+@inline @generated function assign_at!(lhs::Field{S}, rhs, inds, bounds) where S
 	return Expr(
 		:block,
 		[:(assign_at!(
@@ -260,6 +276,8 @@ end
 	)
 end
 
+prepare_assignment(lhs::Field, rhs) = rhs
+
 #    x   |   x       x       x       x       x       x       x   |   x    
 #        1       2       3       4       5       6       7       8       9
 #        x       x       x       x       x       x       x       x       -
@@ -269,7 +287,7 @@ end
 #        x       x       x       x       x       x       x       x       -
 #        |                                                       |         
 
-@generated function assign_at!(lhs::Field{Stags}, rhs, s::Val{Stag}, inds, bounds) where {Stags, Stag}
+@inline @generated function assign_at!(lhs::Field{Stags}, rhs::RHS, s::Val{Stag}, inds, bounds) where {Stags, RHS, Stag}
 	f = stagindex(Stags, mod.(Stag, 2))
 	return :(all(inds .<= (bounds[2] .+ $(mod.(Stag, 2) .- 1))) ? (lhs[$f, inds...] = getindex(rhs, s, inds, bounds)) : ())
 end

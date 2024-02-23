@@ -1,6 +1,6 @@
 # module StaggeredKernels/tensor.jl
 
-(tensor_order(::T) where T <: AbstractTensor) = tensor_order(T)
+# (tensor_order(::T) where T <: AbstractTensor) = tensor_order(T)
 
 (tensor_order(::Type{Tensor{S,T}}) where {S,T}) = symmetry_order(S)
 

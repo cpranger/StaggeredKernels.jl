@@ -28,9 +28,9 @@ TensorOp(op::Symbol, args...) = TensorExpr(Val(:call), Val(op), args...)
 	Tensor((; zip(keys(x.cpnts), diag(getproperty(x, c), getproperty(f, c), offset) for c in keys(x.cpnts))...), S)
 
 (diag(x::Tensor{S}, f::Tuple) where {S}) = 
-Tensor((; zip(keys(x.cpnts), diag(getproperty(x, c), getproperty.(f, c)) for c in keys(x.cpnts))...), S)
+	Tensor((; zip(keys(x.cpnts), diag(getproperty(x, c), getproperty.(f, c)) for c in keys(x.cpnts))...), S)
 (diag(x::Tensor{S}, f::Tuple, offset) where {S}) = 
-Tensor((; zip(keys(x.cpnts), diag(getproperty(x, c), getproperty.(f, c), offset) for c in keys(x.cpnts))...), S)
+	Tensor((; zip(keys(x.cpnts), diag(getproperty(x, c), getproperty.(f, c), offset) for c in keys(x.cpnts))...), S)
 
 include("./tensor_symmetry.jl")
 
@@ -227,7 +227,7 @@ end
 	return Expr(:block, map(expr_rules, Meta.quot.(N))...)
 end
 
-@generated function assign_at!(lhs::Tensor{S, NamedTuple{N, T}}, rhs, inds, bounds) where {S, N, T}
+@generated function assign_at!(lhs::Tensor{S, NamedTuple{N, T}}, rhs::RHS, inds, bounds) where {S, RHS, N, T}
 	expr_rules = (k, K) -> :(assign_at!(getfield(lhs.cpnts, $K), get_component(rhs, $(Val(k))), inds, bounds))
 	return Expr(:block, map(expr_rules, N, Meta.quot.(N))...)
 end
@@ -236,6 +236,12 @@ end
 	expr_rules = (k, K) -> :(assign_at!(getfield(lhs.cpnts, $K), (get_component(rhs[1], $(Val(k))), get_component(rhs[2], $(Val(k)))), inds, bounds))
 	return Expr(:block, map(expr_rules, N, Meta.quot.(N))...)
 end
+
+(prepare_assignment(lhs::Tensor{S, NamedTuple{N, T}}, rhs) where {S, N, T}) = 
+	Tensor((; zip(N, prepare_assignment(getfield(lhs.cpnts, k), get_component(rhs, Val(k))) for k in N)...), S)
+
+(prepare_assignment(lhs::Tensor{S}, rhs::Tuple{R, BC}) where {S, R, BC}) = 
+	map(r -> prepare_assignment(lhs, r), rhs)
 
 
 	###########################
@@ -270,10 +276,10 @@ J3(arg) =             tr(arg^3)
 
 tr(arg) = arg.xx + arg.yy + arg.zz
 
-function dev(a::AbstractTensor)
-	o =  tensor_order(a)
-	o == 2 && return a - tr(a)*Tensor(Identity)/3
-	error("trying to compute deviator of rank $o tensor.")
+@generated function dev(a::T) where T <: AbstractTensor
+	o =  tensor_order(T)
+	o == 2 && return :(a - tr(a)*Tensor(Identity)/3)
+	return :(error("trying to compute deviator of rank $o tensor."))
 end
 	
 
@@ -284,7 +290,7 @@ end
 	##                       ##
 	###########################
 
-function grad(t)
+function grad(t::S) where S <: AbstractScalar
 	return Tensor((
 		x = D(t, :x),
 		y = D(t, :y),
@@ -292,10 +298,10 @@ function grad(t)
 	), Unsymmetric{1})
 end
 
-function grad(t::AbstractTensor)
-	rank = tensor_order(t)
-	rank == 1 || error("gradient of rank $rank tensor not supported.")
-	return Tensor((
+@generated function grad(t::T) where T <: AbstractTensor
+	rank = tensor_order(T)
+	rank == 1 || return :(error("gradient of rank $rank tensor not supported."))
+	return :(Tensor((
 		xx = D(t.x, :x),
 		xy = D(t.x, :y),
 		xz = D(t.x, :z),
@@ -305,10 +311,10 @@ function grad(t::AbstractTensor)
 		zx = D(t.z, :x),
 		zy = D(t.z, :y),
 		zz = D(t.z, :z)
-	), Unsymmetric{2})
+	), Unsymmetric{2}))
 end
 
-function grad2(t::AbstractScalar)
+function grad2(t::S) where S <: AbstractScalar
 	return Tensor((
 		xx = D(t, :x)*D(t, :x),
 		xy = D(t, :y)*D(t, :x),
@@ -319,30 +325,30 @@ function grad2(t::AbstractScalar)
 	), Symmetric)
 end
 
-function grad2(t::AbstractTensor)
-	rank = tensor_order(t)
-	rank == 1 || error("gradient of rank $rank tensor not supported.")
-	return Tensor((
+@generated function grad2(t::T) where T <: AbstractTensor
+	rank = tensor_order(T)
+	rank == 1 || return :(error("gradient of rank $rank tensor not supported."))
+	return :(Tensor((
 		xx = D(t.x, :x)*D(t.x, :x),
 		xy = D(t.x, :y)*D(t.y, :x),
 		yy = D(t.y, :y)*D(t.y, :y),
 		xz = D(t.x, :z)*D(t.z, :x),
 		yz = D(t.y, :z)*D(t.z, :y),
 		zz = D(t.z, :z)*D(t.z, :z)
-	), Symmetric)
+	), Symmetric))
 end
 
-function symgrad(t::AbstractTensor)
-	rank = tensor_order(t)
-	rank == 1 || error("gradient of rank $rank tensor not supported.")
-	return Tensor((
+@generated function symgrad(t::T) where T <: AbstractTensor
+	rank = tensor_order(T)
+	rank == 1 || return :(error("gradient of rank $rank tensor not supported."))
+	return :(Tensor((
 		xx = (D(t.x, :x)),
 		xy = (D(t.x, :y) + D(t.y, :x))/2,
 		yy = (D(t.y, :y)),
 		xz = (D(t.x, :z) + D(t.z, :x))/2,
 		yz = (D(t.y, :z) + D(t.z, :y))/2,
 		zz = (D(t.z, :z))
-	), Symmetric)
+	), Symmetric))
 end
 
 # this is hijacking, but necessary at the moment to reuse the curl and symgrad operators for computing staggers
@@ -355,23 +361,24 @@ function Base.:+(a::NTuple{M, NTuple{N}}...) where {N, M}
 	error("Stag incompatibility: $a")
 end
 
-function divergence(t::AbstractTensor)
-	rank = tensor_order(t)
-	rank == 1 && return D(t.x, :x) + D(t.y, :y) + D(t.z, :z)
-	rank == 2 && return Tensor((
+@generated function divergence(t::T) where T <: AbstractTensor
+	rank = tensor_order(T)
+	rank == 1 && return :(D(t.x, :x) + D(t.y, :y) + D(t.z, :z))
+	rank == 2 && return :(Tensor((
 		x = D(t.xx, :x) + D(t.xy, :y) + D(t.xz, :z),
 		y = D(t.yx, :x) + D(t.yy, :y) + D(t.yz, :z),
 		z = D(t.zx, :x) + D(t.zy, :y) + D(t.zz, :z),
-	), Unsymmetric{1})
+	), Unsymmetric{1}))
 end
 
-function curl(t::AbstractTensor)
-	rank = tensor_order(t)
-	rank == 1 && return Tensor((
+@generated function curl(t::T) where T <: AbstractTensor
+	rank = tensor_order(T)
+	rank == 1 || return :(error("curl of rank $rank tensor not supported."))
+	return :(Tensor((
 		x = D(t.z, :y) - D(t.y, :z),
 		y = D(t.x, :z) - D(t.z, :x),
 		z = D(t.y, :x) - D(t.x, :y),
-	), Unsymmetric{1})
+	), Unsymmetric{1}))
 end
 
 
