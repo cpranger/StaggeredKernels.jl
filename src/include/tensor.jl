@@ -1,6 +1,6 @@
 # module StaggeredKernels
 
-export Tensor, AbstractTensor, Vector, L2, J1, J2, J3, I1, I2, I3, tr, dev, divergence, grad, grad2, symgrad, curl, diag, TensorOp
+export Tensor, AbstractTensor, #=Vector,=# L2, J1, J2, J3, I1, I2, I3, tr, dev, divergence, grad, grad2, symgrad, curl, diag, TensorOp
 
 abstract type AbstractTensor end
 
@@ -53,18 +53,17 @@ function Tensor(cpnts::T, ::Type{S}) where {S<:TensorSymmetry, T<:NamedTuple}
 	return Tensor{S,T}(cpnts)
 end
 
-(Vector(cpnts::T) where {T<:NamedTuple}) = Tensor{Unsymmetric{1},T}(cpnts)
-
 function Tensor(cpnts::T) where {T<:NamedTuple}
 	order, msg = parse_tensor(T)
 	order >  0 || error("When trying to parse Named Tuple as Tensor: ", msg)
-	return Tensor{S,T}(cpnts, Unsymmetric{order})
+	return Tensor{Unsymmetric{order},T}(cpnts)
 end
 
 (Tensor(::Type{S}) where S <: TensorSymmetry) = Tensor(NamedTuple(), S)
 
-(Tensor(dims, ::Type{S}, stags::Tensor) where {S<:TensorSymmetry}) = 
-	Tensor(dims, S, stags.cpnts)
+(Tensor(dims,            stags::T        ) where {T<:NamedTuple    }) = Tensor(dims, Tensor(stags))
+(Tensor(dims,            stags::Tensor{S}) where {S<:TensorSymmetry}) = Tensor(dims, S, stags.cpnts)
+(Tensor(dims, ::Type{S}, stags::Tensor{S}) where {S<:TensorSymmetry}) = Tensor(dims, S, stags.cpnts)
 
 function Tensor(dims::NTuple, ::Type{S}, stags::NamedTuple) where {S<:TensorSymmetry}
 	data  = zeros(+(map(length, stags)...), dims...)
@@ -74,8 +73,6 @@ function Tensor(dims::NTuple, ::Type{S}, stags::NamedTuple) where {S<:TensorSymm
 	vals  = map(gen, inds, cmps, values(stags))
 	return Tensor(NamedTuple{cmps}(vals), S)
 end
-
-Vector(dims, stags) = Tensor(dims, Unsymmetric{1}, stags)
 
 # explicitly user-facing tensor indexing
 function Base.getproperty(obj::T, c::Symbol) where T <: AbstractTensor

@@ -115,18 +115,18 @@ module Volume
 	using ..StaggeredKernels
 	export motion_stags, strain_stags, curl_stags, div_stags, state_stags
 	
-	const motion_stags = Vector((
+	const motion_stags = Tensor((
 		x = ((0, 1, 1,),),
 		y = ((1, 0, 1,),),
 		z = ((1, 1, 0,),),
 	))
-	# const motion_stags = Vector((
+	# const motion_stags = Tensor((
 	# 	x = ((1, 0, 0,),),
 	# 	y = ((0, 1, 0,),),
 	# 	z = ((0, 0, 1,),),
 	# ))
 	# fully staggered grid in 3D. TODO: make work in 2D etc...
-	# const motion_stags = Vector((
+	# const motion_stags = Tensor((
 	# 	x = ((0, 0, 0), (0, 1, 1), (1, 0, 1), (1, 1, 0),),
 	# 	y = ((0, 0, 0), (0, 1, 1), (1, 0, 1), (1, 1, 0),),
 	# 	z = ((0, 0, 0), (0, 1, 1), (1, 0, 1), (1, 1, 0),),

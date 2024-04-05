@@ -113,7 +113,7 @@ const AbstractObject    = Union{AbstractScalar, AbstractTensor}
  Base.:/(a::AbstractScalarField, b::AbstractScalarField)           =  ScalarOp(:/, a, b)
  Base.:/(a::AbstractScalar,      b::AbstractScalarField)           =  ScalarOp(:/, a, b)
  Base.:/(a::AbstractScalarField, b::AbstractScalar     )           =  ScalarOp(:/, a, b)
- Base.:/(a::AbstractTensor,      b::Tensor{Unsymmetric{1}})        =  Vector((x = a.x/b.x, y = a.y/b.y, z = a.z/b.z,))
+ Base.:/(a::AbstractTensor,      b::Tensor{Unsymmetric{1}})        =  Tensor((x = a.x/b.x, y = a.y/b.y, z = a.z/b.z,))
  Base.:/(a::AbstractTensor,      b::AbstractScalar     )           =  TensorOp(:/, a, b)
  Base.:/(a::AbstractScalar,      b::AbstractTensor     )           =  TensorOp(:/, a, b)
  Base.:/(a::AbstractObject,      b::Tuple              )           =  map(b -> a / b, b)

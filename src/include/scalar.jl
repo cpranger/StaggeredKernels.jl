@@ -83,13 +83,8 @@ struct FieldIntp{T} <: AbstractScalarField
 	interpolant::T
 end
 
-interpolate(arg::Number) = arg
-
-function interpolate(arg::T) where T <: AbstractScalarField
-	s = stags(T)
-	length(s) == 1 || error("Currently only one stag supported per field.")
-	return FieldIntp{T}(arg)
-end
+(interpolate(arg::Number)) = arg
+(interpolate(arg::T) where T <: AbstractScalarField) = FieldIntp{T}(arg)
 
 struct FieldGen{F <: Function} <: AbstractScalarField
 	func::F
@@ -193,10 +188,19 @@ end
 @inline (getindex(x::FieldGen, s::Val{S}, inds, bounds) where S) = x.func((inds .+ S./2 .- 1)...)
 
 @inline @generated function getindex(x::FieldIntp{A}, ::Val{S}, inds, bounds) where {A, S}
-	sten = combinations(map((f, t) -> mod(f,2) == mod(t,2) ? [t] : [t-1,t+1], stags(A)[1], S)...)
-	size = length(sten)
-	args = [:(getindex(x.interpolant, $(Val(s)), inds, bounds)) for s in sten]
-	return Expr(:call, :/, Expr(:call, :+, args...), size)
+	# computes binary manhattan distances
+	dist   = map(s -> count(mod.(S, 2) != mod.(s, 2)), stags(A))
+	dist_0 = min(dist...)
+	
+	stencil_gen_1 = (f, t) -> mod(t,2) == mod(f,2) ? [t] : [t-1,t+1]
+	stencil_gen_0 = (d, s) -> dist_0 == d ? append!(stencil, combinations(map(stencil_gen_1, s, S)...)) : nothing
+	
+	stencil = []; map(stencil_gen_0, dist, stags(A))
+	
+	# Meta.@show S
+	# Meta.@show sten
+	args = [:(getindex(x.interpolant, $(Val(s)), inds, bounds)) for s in stencil]
+	return Expr(:call, :/, Expr(:call, :+, args...), length(stencil))
 end
 
 @inline @generated function getindex(diag::FieldDiag{F, SS, O}, ::Val{S}, inds, bounds) where {F, SS, O, S}
