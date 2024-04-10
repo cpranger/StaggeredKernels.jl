@@ -34,10 +34,10 @@ end
 	return Expr(:block, exprs...)
 end
 
-gridsize(f)              = missing
 gridsize(f::Field)       = size(f.data)[2:end]
 gridsize(f::Tensor)      = gridsize(f.cpnts)
 gridsize(f::NamedTuple)  = gridsize(values(f))
+gridsize(f)              = (0,)
 
 function gridsize(f::Tuple)
 	nn = skipmissing(gridsize.(f))

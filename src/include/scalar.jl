@@ -120,6 +120,12 @@ function filter_ndims(a::Vector)
 	error("Incompatible field dimensionalities ($a).")
 end
 
+function filter_gridsize(a::Vector)
+	el = argmax(prod, a)
+	all(i -> i == (0,) || i == el, a) && return el
+	error("Incompatible grid sizes ($a).")
+end
+
 my_ndims(f::Field)      = ndims(f.data) - 1
 my_ndims(f::FieldExpr)  = filter_ndims([my_ndims(c) for c in f.contents])
 my_ndims(f::FieldShft)  = my_ndims(f.shiftee)
@@ -128,6 +134,12 @@ my_ndims(f::FieldGen)   = first(methods(f.func)).nargs
 (my_ndims(f::NTuple{M,NTuple{N}}) where {M, N}) = N
 my_ndims(f::FieldVal)   = 0
 my_ndims(f::Any)        = 0
+
+gridsize(f::FieldExpr)  = filter_gridsize([gridsize(c) for c in f.contents])
+gridsize(f::FieldShft)  = gridsize(f.shiftee)
+gridsize(f::FieldIntp)  = gridsize(f.interpolant)
+gridsize(f::FieldGen)   = (0,)
+gridsize(f::FieldVal)   = (0,)
 
 (stags(::Type{Field{St, T}})   where {St, T}) = St
 (stags(::Type{FieldExpr{Tt}})  where {Tt        }) = intersect([stags(t) for t in fieldtypes(Tt)]...)
@@ -231,7 +243,7 @@ end
 	)
 end
 
-@inline @generated function reduce_at!(result::Ref{T}, op, f::Field{S}, inds, bounds) where {T, S}
+@inline @generated function reduce_at!(result::Ref{T}, op, f::F, inds, bounds) where {T, F <: AbstractScalarField}
 	return Expr(
 		:block,
 		[Expr(
@@ -241,7 +253,7 @@ end
 				result[],
 				getindex(f, $(Val(.-s)), inds, bounds)
 			))
-		) for s in S]...
+		) for s in stags(F)]...
 	)
 end
 
