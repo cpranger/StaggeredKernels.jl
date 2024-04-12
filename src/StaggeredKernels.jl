@@ -76,7 +76,7 @@ end
 	return Expr(:block, exprs...)
 end
 
-function reduce(op, field; init = 0.)
+function reduce(op::Op, field::F; init::R = 0.) where {Op, F, R}
 	n = gridsize(field)
 	o = n .- n .+ 1
 	bounds   = (o, n)

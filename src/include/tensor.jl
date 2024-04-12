@@ -45,6 +45,14 @@ end
 
 adjoint(t::AbstractTensor) = TensorAdjoint(t)
 
+my_ndims(f::Tensor)      = filter_ndims([my_ndims(c) for c in f.cpnts])
+my_ndims(f::TensorExpr)  = filter_ndims([my_ndims(c) for c in f.contents])
+my_ndims(f::TensorProd)  = filter_ndims([my_ndims(c) for c in (f.t1, f.t2)])
+
+gridsize(f::Tensor)      = filter_gridsize([gridsize(c) for c in f.cpnts])
+gridsize(f::TensorExpr)  = filter_gridsize([gridsize(c) for c in f.contents])
+gridsize(f::TensorProd)  = filter_gridsize([gridsize(c) for c in (f.t1, f.t2)])
+
 include("./tensor_utils.jl")
 
 function Tensor(cpnts::T, ::Type{S}) where {S<:TensorSymmetry, T<:NamedTuple}

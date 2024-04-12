@@ -1,5 +1,8 @@
 # module StaggeredKernels
 
+using SpecialFunctions
+using LambertW
+
 export AbstractObject
 
 const AbstractObject    = Union{AbstractScalar, AbstractTensor}
@@ -44,6 +47,11 @@ const AbstractObject    = Union{AbstractScalar, AbstractTensor}
  Base.:exp(a::Tuple)                = exp.(a)
  Base.:exp(a::NamedTuple)           = map(a -> exp(a), a)
 
+(Base.:log(a::BC{D}) where D)       = BC{D}(log(a.expr))
+ Base.:log(a::AbstractScalarField)  = ScalarOp(:log, a)
+ Base.:log(a::Tuple)                = log.(a)
+ Base.:log(a::NamedTuple)           = map(a -> log(a), a)
+
 (Base.:sin(a::BC{D}) where D)       = BC{D}(sin(a.expr))
  Base.:sin(a::AbstractScalarField)  = ScalarOp(:sin, a)
  Base.:sin(a::Tuple)                = sin.(a)
@@ -63,6 +71,16 @@ const AbstractObject    = Union{AbstractScalar, AbstractTensor}
  Base.:cbrt(a::AbstractScalarField)  = ScalarOp(:cbrt, a)
  Base.:cbrt(a::Tuple)                = cbrt.(a)
  Base.:cbrt(a::NamedTuple)           = map(a -> cbrt(a), a)
+
+(LambertW.:lambertw(a::BC{D}) where D)       = BC{D}(lambertw(a.expr))
+ LambertW.:lambertw(a::AbstractScalarField)  = ScalarOp(:lambertw, a)
+ LambertW.:lambertw(a::Tuple)                = lambertw.(a)
+ LambertW.:lambertw(a::NamedTuple)           = map(a -> lambertw(a), a)
+
+(SpecialFunctions.:gamma(a::BC{D}) where D)       = BC{D}(gamma(a.expr))
+ SpecialFunctions.:gamma(a::AbstractScalarField)  = ScalarOp(:gamma, a)
+ SpecialFunctions.:gamma(a::Tuple)                = gamma.(a)
+ SpecialFunctions.:gamma(a::NamedTuple)           = map(a -> gamma(a), a)
 
 (Base.:+(a::BC{D},               b::BC{D}              ) where D)  =  BC{D}(a.expr + b.expr)
 (Base.:+(a::BC{D},               b::AbstractScalar     ) where D)  =  BC{D}(a.expr + b     )

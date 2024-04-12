@@ -2,3 +2,7 @@ name = "StaggeredKernels"
 uuid = "7e04f4fc-500f-4e38-a45f-c4e2172a0bce"
 authors = ["Casper Pranger <casper.pranger@gmail.com>"]
 version = "0.1.0"
+
+[deps]
+LambertW = "984bce1d-4616-540c-a9ee-88d1112d94c9"
+SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
