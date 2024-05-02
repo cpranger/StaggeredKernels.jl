@@ -1,6 +1,6 @@
 # module StaggeredKernels
 
-export If, A, D, BD, FD, BA, FA, interpolate, fieldgen, AbstractScalarField, Field, FieldVal, BC, diag#, assign_at, reduce_at
+export If, A, D, BD, FD, BA, FA, B, F, interpolate, fieldgen, AbstractScalarField, Field, FieldVal, BC, diag#, assign_at, reduce_at
 
 abstract type AbstractScalarField end
 
@@ -46,6 +46,8 @@ FD(x::Number, ::Symbol) = 0
  A(x::Number, ::Symbol) = x
 BA(x::Number, ::Symbol) = x
 FA(x::Number, ::Symbol) = x
+ B(x::Number, ::Symbol) = x
+ F(x::Number, ::Symbol) = x
 
  D(x::FieldVal, ::Symbol) = 0
 BD(x::FieldVal, ::Symbol) = 0
@@ -53,6 +55,8 @@ FD(x::FieldVal, ::Symbol) = 0
  A(x::FieldVal, ::Symbol) = x
 BA(x::FieldVal, ::Symbol) = x
 FA(x::FieldVal, ::Symbol) = x
+ F(x::FieldVal, ::Symbol) = x
+ B(x::FieldVal, ::Symbol) = x
 
  D(x, d::Symbol) =  D(x, decode_component(d)[1])
 BD(x, d::Symbol) = BD(x, decode_component(d)[1])
@@ -60,6 +64,8 @@ FD(x, d::Symbol) = FD(x, decode_component(d)[1])
  A(x, d::Symbol) =  A(x, decode_component(d)[1])
 BA(x, d::Symbol) = BA(x, decode_component(d)[1])
 FA(x, d::Symbol) = FA(x, decode_component(d)[1])
+ B(x, d::Symbol) =  B(x, decode_component(d)[1])
+ F(x, d::Symbol) =  F(x, decode_component(d)[1])
 
  D(x, d::Int   ) = d <= my_ndims(x) ?  D(x, kronecker(d)(my_ndims(x))) : 0
 BD(x, d::Int   ) = d <= my_ndims(x) ? BD(x, kronecker(d)(my_ndims(x))) : 0
@@ -67,13 +73,17 @@ FD(x, d::Int   ) = d <= my_ndims(x) ? FD(x, kronecker(d)(my_ndims(x))) : 0
  A(x, d::Int   ) = d <= my_ndims(x) ?  A(x, kronecker(d)(my_ndims(x))) : 0
 BA(x, d::Int   ) = d <= my_ndims(x) ? BA(x, kronecker(d)(my_ndims(x))) : 0
 FA(x, d::Int   ) = d <= my_ndims(x) ? FA(x, kronecker(d)(my_ndims(x))) : 0
+ B(x, d::Int   ) = d <= my_ndims(x) ?  B(x, kronecker(d)(my_ndims(x))) : 0
+ F(x, d::Int   ) = d <= my_ndims(x) ?  F(x, kronecker(d)(my_ndims(x))) : 0
 
  D(x::AbstractScalarField, d::NTuple) = (S(x, .+d) - S(x, .-d))
 BD(x::AbstractScalarField, d::NTuple) =  S(D(x, d), .-d)
 FD(x::AbstractScalarField, d::NTuple) =  S(D(x, d), .+d)
- A(x::AbstractScalarField, d::NTuple) = (S(x,    .+d) + S(x,    .-d))/2
+ A(x::AbstractScalarField, d::NTuple) = (S(x, .+d) + S(x, .-d))/2
 BA(x::AbstractScalarField, d::NTuple) =  S(A(x, d), .-d)
 FA(x::AbstractScalarField, d::NTuple) =  S(A(x, d), .+d)
+ B(x::AbstractScalarField, d::NTuple) =  S(x, .-d)
+ F(x::AbstractScalarField, d::NTuple) =  S(x, .+d)
 
 ( D(x::NTuple{M,NTuple{N,I}}, d::NTuple) where {N, M, I <: Int}) = Tuple <| unique <| map(s -> mod.(s .+ d, 2), x)
 ( A(x::NTuple{M,NTuple{N,I}}, d::NTuple) where {N, M, I <: Int}) = Tuple <| unique <| map(s -> mod.(s .+ d, 2), x)
@@ -120,12 +130,6 @@ function filter_ndims(a::Vector)
 	error("Incompatible field dimensionalities ($a).")
 end
 
-function filter_gridsize(a::Vector)
-	el = argmax(prod, a)
-	all(i -> i == (0,) || i == el, a) && return el
-	error("Incompatible grid sizes ($a).")
-end
-
 my_ndims(f::Field)      = ndims(f.data) - 1
 my_ndims(f::FieldExpr)  = filter_ndims([my_ndims(c) for c in f.contents])
 my_ndims(f::FieldShft)  = my_ndims(f.shiftee)
@@ -135,11 +139,11 @@ my_ndims(f::FieldGen)   = first(methods(f.func)).nargs
 my_ndims(f::FieldVal)   = 0
 my_ndims(f::Any)        = 0
 
+gridsize(f::Field)      = size(f.data)[2:end]
 gridsize(f::FieldExpr)  = filter_gridsize([gridsize(c) for c in f.contents])
 gridsize(f::FieldShft)  = gridsize(f.shiftee)
 gridsize(f::FieldIntp)  = gridsize(f.interpolant)
-gridsize(f::FieldGen)   = (0,)
-gridsize(f::FieldVal)   = (0,)
+gridsize(f::Any)        = (0,)
 
 (stags(::Type{Field{St, T}})   where {St, T}) = St
 (stags(::Type{FieldExpr{Tt}})  where {Tt        }) = intersect([stags(t) for t in fieldtypes(Tt)]...)

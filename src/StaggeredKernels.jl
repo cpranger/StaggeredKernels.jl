@@ -34,17 +34,13 @@ end
 	return Expr(:block, exprs...)
 end
 
-gridsize(f::Field)       = size(f.data)[2:end]
-gridsize(f::Tensor)      = gridsize(f.cpnts)
-gridsize(f::NamedTuple)  = gridsize(values(f))
-gridsize(f)              = (0,)
-
-function gridsize(f::Tuple)
-	nn = skipmissing(gridsize.(f))
-	length(collect(nn)) >= 1 || error("No gridded data structures found.")
-	all(n -> n == nn[1], nn) || error("Data defined on unequal grids.")
-	return nn[1]
+function filter_gridsize(a::Vector)
+	el = argmax(prod, a)
+	all(i -> i == (0,) || i == el, a) && return el
+	error("Incompatible grid sizes ($a).")
 end
+
+gridsize(f::Tuple) = filter_gridsize([s for s in gridsize.(f)])
 
 (prepare_assignment(lhs::L, rhs::R) where {L <: Tuple, R <: Tuple}) = 
 	map(prepare_assignment, lhs, rhs)

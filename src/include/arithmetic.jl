@@ -134,6 +134,7 @@ const AbstractObject    = Union{AbstractScalar, AbstractTensor}
  Base.:/(a::AbstractTensor,      b::Tensor{Unsymmetric{1}})        =  Tensor((x = a.x/b.x, y = a.y/b.y, z = a.z/b.z,))
  Base.:/(a::AbstractTensor,      b::AbstractScalar     )           =  TensorOp(:/, a, b)
  Base.:/(a::AbstractScalar,      b::AbstractTensor     )           =  TensorOp(:/, a, b)
+ Base.:/(a::NamedTuple,          b::AbstractScalar     )           =  TensorOp(:/, a, b)
  Base.:/(a::AbstractObject,      b::Tuple              )           =  map(b -> a / b, b)
  Base.:/(a::Tuple,               b::AbstractObject     )           =  map(a -> a / b, a)
  Base.:/(a::Tuple,               b::Tuple              )           =  a ./ b
